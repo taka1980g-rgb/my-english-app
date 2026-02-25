@@ -59,11 +59,26 @@ with st.sidebar:
         ]
     )
     
+    # === 新機能：質問者のプリセット選択 ===
     st.markdown("---")
-    questioner = st.text_input(
-        "👤 質問者（AIの役割）", 
-        "例: 小学校の先生、学会発表の場での聴衆 など"
+    st.write("👤 質問者（AIの役割）")
+    preset_questioner = st.selectbox(
+        "相手を選んでください",
+        [
+            "小学校の先生",
+            "同年代の友達",
+            "職場の先輩",
+            "気さくな友達",
+            "学会発表の聴衆",
+            "その他（自由入力）"
+        ]
     )
+    
+    # 「その他」が選ばれた時だけ自由入力欄を表示する
+    if preset_questioner == "その他（自由入力）":
+        questioner = st.text_input("自由に役割を入力してください", "例: 空港の入国審査官")
+    else:
+        questioner = preset_questioner
     
     st.markdown("---")
     situation = st.text_area(
@@ -169,16 +184,13 @@ for message in st.session_state.messages:
 st.markdown("---")
 st.write("🗣️ **あなたのターン（わからない時はギブアップもOK！）**")
 
-# AIに送る指示（prompt）と、画面に表示する文字（display_prompt）を分ける
 prompt = None
 display_prompt = None
 
-# === 新機能：ギブアップボタン ===
 if st.button("🆘 ギブアップ（今の質問の解説と回答例を見て次へ）"):
     prompt = "今の質問の意図がわかりません（または英語でどう答えていいかわかりません）。あなたが最後に投げかけた質問の「日本語での意味・解説」と、私が答えるべきだった「模範的な回答例（英語と日本語）」を2〜3個教えてください。その後、会話を続けるための【新しい別の質問】を英語で1つだけ投げかけてください。フォーマットは必ず [フィードバック] と [英語の質問] を守ってください。"
     display_prompt = "（🆘 ギブアップして、質問の解説と回答例をリクエストしました）"
 
-# 音声入力（マイク）
 audio_value = st.audio_input("マイクを押して録音開始 / 停止")
 
 if audio_value is not None:
@@ -202,7 +214,6 @@ if audio_value is not None:
             except Exception as e:
                 st.error("エラー: もう少しゆっくり、はっきりと話してみてください。")
 
-# 文字入力（テキスト）
 with st.form("text_input_form", clear_on_submit=True):
     col1, col2 = st.columns([4, 1])
     with col1:
@@ -214,7 +225,6 @@ with st.form("text_input_form", clear_on_submit=True):
         prompt = text_prompt
         display_prompt = text_prompt
 
-# 送信処理（ギブアップ、音声、文字すべて共通）
 if prompt and display_prompt:
     st.session_state.messages.append({"role": "user", "content": display_prompt})
     
