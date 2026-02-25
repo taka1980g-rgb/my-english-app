@@ -9,20 +9,16 @@ import re
 st.title("My English Roleplay AI 🗣️")
 st.write("左側のメニューで設定を行い、英会話をスタートしましょう！")
 
-# === 新機能：APIの利用回数（1分間）をカウントする準備 ===
 if "api_calls" not in st.session_state:
     st.session_state.api_calls = []
 
-# 過去60秒以内の通信記録だけを残す（古い履歴は消す）
 current_time = time.time()
 st.session_state.api_calls = [t for t in st.session_state.api_calls if current_time - t < 60]
 
-# 1分間の制限（15回）
 MAX_CALLS = 15
 used_calls = len(st.session_state.api_calls)
 remain_calls = MAX_CALLS - used_calls
 
-# 左側のメニュー（サイドバー）
 with st.sidebar:
     st.header("⚙️ 初期設定")
     api_key = st.text_input("Gemini APIキー", type="password")
@@ -56,21 +52,17 @@ with st.sidebar:
     st.header("🛑 会話の終了")
     end_button = st.button("会話を終了して最終評価をもらう")
     
-    # === 新機能：体力ゲージの表示 ===
     st.markdown("---")
     st.subheader("🔋 1分間の無料AIパワー")
-    # ゲージの長さを計算（0〜1の範囲に収める）
     ratio = max(0.0, min(1.0, remain_calls / MAX_CALLS))
     st.progress(ratio)
     
     if remain_calls <= 3 and used_calls > 0:
-        # 一番古い通信が60秒経過して消えるまでの残り秒数を計算
         wait_sec = int(60 - (current_time - st.session_state.api_calls[0]))
         st.warning(f"⚠️ 少し休憩しましょう！あと {max(0, wait_sec)}秒 で回復します☕")
     else:
         st.write(f"残り通信回数: {remain_calls} / {MAX_CALLS} 回")
 
-# アップロードされたファイルから文字を抽出する関数
 def extract_text(file):
     text = ""
     if file.name.endswith('.pdf'):
@@ -81,7 +73,6 @@ def extract_text(file):
         text = file.read().decode('utf-8')
     return text
 
-# メインのプログラム
 if api_key:
     clean_api_key = api_key.strip()
     genai.configure(api_key=clean_api_key)
@@ -110,21 +101,21 @@ if api_key:
     
     if "chat_session" not in st.session_state or start_button:
         try:
-            model = genai.GenerativeModel('gemini-2.5-flash', system_instruction=system_instruction)
+            # ★安定版のAI「gemini-2.0-flash」に変更しました★
+            model = genai.GenerativeModel('gemini-2.0-flash', system_instruction=system_instruction)
             st.session_state.chat_session = model.start_chat(history=[])
             st.session_state.messages = []
             
-            st.session_state.api_calls.append(time.time()) # 通信を記録
+            st.session_state.api_calls.append(time.time())
             response = st.session_state.chat_session.send_message("シチュエーションを開始して、最初の質問を英語でしてください。")
             st.session_state.messages.append({"role": "assistant", "content": response.text})
         except Exception as e:
             st.error(f"AIの準備中にエラーが発生しました: {e}")
 
-    # 終了ボタンが押された時の処理
     if end_button and "chat_session" in st.session_state:
         with st.spinner("AIが成績をまとめています..."):
             try:
-                st.session_state.api_calls.append(time.time()) # 通信を記録
+                st.session_state.api_calls.append(time.time())
                 summary_prompt = "ここまでの会話を終了します。私の英語の文法、語彙力、コミュニケーション力について、良かった点と今後の課題を日本語で総評してください。"
                 response = st.session_state.chat_session.send_message(summary_prompt)
                 st.session_state.messages.append({"role": "user", "content": "（会話を終了し、評価をリクエストしました）"})
@@ -133,7 +124,6 @@ if api_key:
             except Exception as e:
                 st.error("評価の作成中にエラーが発生しました。")
 
-    # これまでの会話履歴と音声再生ボタンを表示
     for message in st.session_state.messages:
         if "role" in message and "content" in message:
             with st.chat_message(message["role"]):
@@ -167,8 +157,9 @@ if api_key:
                     mime_type = audio_value.type if hasattr(audio_value, 'type') else "audio/wav"
                     audio_data = {"mime_type": mime_type, "data": audio_bytes}
                     
-                    transcriber = genai.GenerativeModel('gemini-2.5-flash')
-                    st.session_state.api_calls.append(time.time()) # 通信を記録
+                    # ★音声聞き取りも安定版のAI「gemini-2.0-flash」に変更しました★
+                    transcriber = genai.GenerativeModel('gemini-2.0-flash')
+                    st.session_state.api_calls.append(time.time())
                     res = transcriber.generate_content([audio_data, "聞こえた英語をそのまま文字起こししてください。文字のみを出力してください。"])
                     
                     if res.parts:
@@ -179,7 +170,7 @@ if api_key:
                     if "429" in str(e):
                         match = re.search(r'retry in ([\d\.]+)s', str(e))
                         wait_t = int(float(match.group(1))) + 1 if match else 30
-                        st.error(f"⚠️ 少し早口すぎたようです！無料枠の休憩タイムです。あと {wait_t}秒 お待ちください ☕")
+                        st.error(f"⚠️ 少し早口すぎたようです！無料枠の休憩タイムです。あと {wait_t}秒 ほど経ってからもう一度送信してください☕")
                     else:
                         st.error(f"AIが音声を処理できませんでした: {e}")
 
@@ -194,7 +185,7 @@ if api_key:
 
         with st.chat_message("assistant"):
             try:
-                st.session_state.api_calls.append(time.time()) # 通信を記録
+                st.session_state.api_calls.append(time.time())
                 response = st.session_state.chat_session.send_message(prompt)
                 st.markdown(response.text)
                 st.session_state.messages.append({"role": "assistant", "content": response.text})
@@ -211,7 +202,7 @@ if api_key:
                 if "429" in str(e):
                     match = re.search(r'retry in ([\d\.]+)s', str(e))
                     wait_t = int(float(match.group(1))) + 1 if match else 30
-                    st.error(f"⚠️ 少し早口すぎたようです！無料枠の休憩タイムです。あと {wait_t}秒 お待ちください ☕")
+                    st.error(f"⚠️ 少し早口すぎたようです！無料枠の休憩タイムです。あと {wait_t}秒 ほど経ってからもう一度送信してください☕")
                 else:
                     st.error(f"返答の作成中にエラーが発生しました: {e}")
 else:
