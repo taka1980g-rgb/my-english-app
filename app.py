@@ -41,8 +41,8 @@ with st.sidebar:
     # ★改善：無駄な通信を削り、モデルを2つに固定化★
     st.write("🧠 AIモデル")
     model_options = {
-        "Gemini 2.5 Flash (高速・汎用)": "gemini-2.5-flash",
-        "Gemini 2.5 Flash-Lite (最速・低コスト)": "gemini-2.5-flash-lite"
+        "高速・汎用": "gemini-2.5-flash",
+        "最速・低コスト": "gemini-2.5-flash-lite"
     }
     # 画面に表示する名前を選ばせる（初期値は0番目のFlash）
     selected_display_name = st.selectbox(
