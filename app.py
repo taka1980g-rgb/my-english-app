@@ -61,8 +61,8 @@ with st.sidebar:
     
     st.write("🧠 AIモデル")
     model_options = {
-        "Gemini 2.5 Flash (高速・汎用)": "gemini-2.5-flash",
-        "Gemini 2.5 Flash-Lite (最速・低コスト)": "gemini-2.5-flash-lite"
+        "賢い": "gemini-2.5-flash",
+        "最速": "gemini-2.5-flash-lite"
     }
     selected_display_name = st.selectbox("使用中の脳みそ", list(model_options.keys()), index=0)
     selected_model = model_options[selected_display_name]
@@ -77,7 +77,7 @@ with st.sidebar:
     preset_questioner = st.selectbox("AIの役柄", ["小学校の先生", "同年代の友達", "職場の先輩", "気さくな友達", "学会発表の聴衆", "その他"])
     questioner = st.text_input("役割を入力", "空港の入国審査官") if preset_questioner == "その他" else preset_questioner
     st.markdown("---")
-    situation = st.text_area("🎬 シチュエーション", "例: 発表後の質疑応答。少し意地悪な質問をしてください。", height=100)
+    situation = st.text_area("🎬 シチュエーション", "例: 小学生３年生の授業", height=100)
     st.markdown("---")
     uploaded_file = st.file_uploader("📁 資料読み込み", type=["pdf", "txt"])
     st.markdown("---")
