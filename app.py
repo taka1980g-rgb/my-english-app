@@ -100,7 +100,6 @@ doc_text = ""
 if uploaded_file is not None:
     doc_text = extract_text(uploaded_file)
 
-# ★改善：AIに対し「改行」と「Markdownリスト形式(- )」を強制する★
 system_instruction = f"""
 あなたは英会話のロールプレイング相手です。
 
@@ -113,8 +112,8 @@ system_instruction = f"""
 厳密なルール:
 1. あなた自身が【あなたの役柄】です。目の前にいる会話相手が【ユーザーの名前】です。
 2. ユーザーの【設定レベル】に合わせて英単語の難易度や文章の長さを調整してください。
-3. ★通信量削減のため、感情表現や前置きは一切不要です。客観的かつ極めて簡潔に出力してください。
-4. ★フィードバックは、必ずMarkdown形式の箇条書き（- ）を使用し、各項目の後には必ず改行を入れて、1行ずつ独立させて表示してください。横に繋げて書くのは厳禁です。
+3. 通信量削減のため、感情表現や前置きは一切不要です。客観的かつ極めて簡潔に出力してください。
+4. フィードバックは、必ずMarkdown形式の箇条書き（- ）を使用し、各項目の後には必ず改行を入れて、1行ずつ独立させて表示してください。横に繋げて書くのは厳禁です。
 5. 必ず以下の「指定フォーマット」で出力してください。
 
 [フィードバック]
@@ -125,11 +124,16 @@ system_instruction = f"""
 （【あなたの役柄】としてユーザーに投げかける英語のセリフや質問文のみ）
 """
 
+# ★オートプレイ管理用のフラグを準備★
+if "last_played_msg_idx" not in st.session_state:
+    st.session_state.last_played_msg_idx = -1
+
 if "chat_session" not in st.session_state or start_button:
     try:
         model = genai.GenerativeModel(selected_model, system_instruction=system_instruction)
         st.session_state.chat_session = model.start_chat(history=[])
         st.session_state.messages = []
+        st.session_state.last_played_msg_idx = -1 # 新しい会話の時はフラグもリセット
         
         response = st.session_state.chat_session.send_message("シチュエーションを開始して、最初の質問を英語でしてください。")
         st.session_state.messages.append({"role": "assistant", "content": response.text})
@@ -146,7 +150,7 @@ if end_button and "chat_session" in st.session_state:
         except Exception as e:
             st.error("評価の作成中にエラーが発生しました。")
 
-for message in st.session_state.messages:
+for i, message in enumerate(st.session_state.messages):
     if "role" in message and "content" in message:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
@@ -159,7 +163,14 @@ for message in st.session_state.messages:
                         fp = io.BytesIO()
                         tts.write_to_fp(fp)
                         fp.seek(0)
-                        st.audio(fp, format="audio/mp3")
+                        
+                        # ★改善：最新のメッセージだけ1回自動再生する★
+                        auto_play = False
+                        if i == len(st.session_state.messages) - 1 and st.session_state.last_played_msg_idx != i:
+                            auto_play = True
+                            st.session_state.last_played_msg_idx = i
+                            
+                        st.audio(fp, format="audio/mp3", autoplay=auto_play)
                     except Exception:
                         pass
 
@@ -169,7 +180,6 @@ st.write("🗣️ **あなたのターン（わからない時はギブアップ
 prompt = None
 display_prompt = None
 
-# ★ギブアップ時も改行を強制★
 if st.button("🆘 ギブアップ（今の質問の解説と回答例を見て次へ）"):
     prompt = """
     今の質問の意図がわかりません。通信量削減のため、無駄な前置きは一切省き、以下の構成で極めて簡潔に出力してください。必ず各項目のあとに改行を入れ、箇条書きが横に繋がらないようにしてください。その後、会話を続けるための【新しい別の質問】を英語で1つ投げかけてください。フォーマットは必ず [フィードバック] と [英語の質問] を守ってください。
