@@ -9,7 +9,7 @@ import re
 # ==========================================================
 # 🔑 ここに取得したAPIキーを貼り付けてください（" " の中にコピペ）
 # ==========================================================
-MY_API_KEY = "ここにAPIキーを貼り付けてください"
+MY_API_KEY = "AIzaSyDJeJIYgFQ9pE6uMTjE1U5D2STMTX5uPjs"
 
 st.title("My English Roleplay AI 🗣️")
 
