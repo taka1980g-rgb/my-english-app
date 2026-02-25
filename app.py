@@ -3,8 +3,6 @@ import google.generativeai as genai
 from gtts import gTTS
 import PyPDF2
 import io
-import time
-import re
 
 # ==========================================================
 # 🔑 StreamlitのSecrets（金庫）からAPIキーを自動で読み込む
@@ -17,16 +15,6 @@ except Exception:
     st.stop()
 
 st.title("My English Roleplay AI 🗣️")
-
-if "api_calls" not in st.session_state:
-    st.session_state.api_calls = []
-
-current_time = time.time()
-st.session_state.api_calls = [t for t in st.session_state.api_calls if current_time - t < 60]
-
-MAX_CALLS = 15
-used_calls = len(st.session_state.api_calls)
-remain_calls = MAX_CALLS - used_calls
 
 with st.sidebar:
     st.header("⚙️ 設定メニュー")
@@ -61,7 +49,7 @@ with st.sidebar:
     )
 
     st.markdown("---")
-    input_name = st.text_input("📛 あなたの名前（呼ばれ方）", placeholder="例: Naoyuki")
+    input_name = st.text_input("📛 あなたの名前（呼ばれ方）", placeholder="例: masa")
     user_name = input_name if input_name else "Anata"
     
     st.markdown("---")
@@ -94,21 +82,10 @@ with st.sidebar:
     st.write("📁 資料を読み込ませる")
     uploaded_file = st.file_uploader("PDF/TXTファイル", type=["pdf", "txt"])
     
-    start_button = st.button("▶️ 会話をリセットしてスタート")
-    
     st.markdown("---")
-    end_button = st.button("🛑 会話を終了して評価をもらう")
-    
-    st.markdown("---")
-    st.subheader("🔋 無料AIパワー (1分間)")
-    ratio = max(0.0, min(1.0, remain_calls / MAX_CALLS))
-    st.progress(ratio)
-    
-    if remain_calls <= 3 and used_calls > 0:
-        wait_sec = int(60 - (current_time - st.session_state.api_calls[0]))
-        st.warning(f"休憩タイム: あと {max(0, wait_sec)}秒☕")
-    else:
-        st.write(f"残り通信回数: {remain_calls} / {MAX_CALLS} 回")
+    # ★改善：ボタンを大きく、目立つカラー（primary）に変更★
+    start_button = st.button("▶️ 会話をリセットしてスタート", type="primary", use_container_width=True)
+    end_button = st.button("🛑 会話を終了して評価をもらう", use_container_width=True)
 
 def extract_text(file):
     text = ""
@@ -124,6 +101,7 @@ doc_text = ""
 if uploaded_file is not None:
     doc_text = extract_text(uploaded_file)
 
+# ★改善：無駄な言葉を削り、箇条書きを徹底させるプロンプトに変更★
 system_instruction = f"""
 あなたは英会話のロールプレイング相手です。
 
@@ -134,16 +112,16 @@ system_instruction = f"""
 【参考資料】: {doc_text}
 
 厳密なルール:
-1. あなた（AI）自身が【あなたの役柄（AI自身）】です。絶対にこの設定からブレないでください。
-2. 目の前にいる会話相手が【ユーザーの名前】です。ユーザーをあなたの役柄（先生や聴衆など）で呼ぶのは絶対にやめてください。
-3. ユーザーの【設定レベル】に合わせて、使用する英単語の難易度や文章の長さを調整してください。
-4. ユーザーが英語で返答したら、文法チェックや自然な表現を日本語でフィードバックしてください。
+1. あなた自身が【あなたの役柄】です。目の前にいる会話相手が【ユーザーの名前】です。
+2. ユーザーの【設定レベル】に合わせて英単語の難易度や文章の長さを調整してください。
+3. ★通信量削減のため、謝罪、同情、無駄な挨拶などの感情表現や前置きは一切不要です。客観的かつ極めて簡潔に出力してください。
+4. フィードバックは箇条書き（・）で視覚的に見やすくしてください。
 5. 必ず以下の「指定フォーマット」で出力してください。
 
 [フィードバック]
-（ここに日本語での文法チェックや挨拶など）
+・（文法チェックや指摘事項を極めて簡潔に）
 [英語の質問]
-（ここに【あなたの役柄（AI自身）】として、ユーザー（{user_name}）に投げかける英語のセリフや質問文）
+（【あなたの役柄】としてユーザーに投げかける英語のセリフや質問文のみ）
 """
 
 if "chat_session" not in st.session_state or start_button:
@@ -152,7 +130,6 @@ if "chat_session" not in st.session_state or start_button:
         st.session_state.chat_session = model.start_chat(history=[])
         st.session_state.messages = []
         
-        st.session_state.api_calls.append(time.time())
         response = st.session_state.chat_session.send_message("シチュエーションを開始して、最初の質問を英語でしてください。")
         st.session_state.messages.append({"role": "assistant", "content": response.text})
     except Exception as e:
@@ -161,8 +138,7 @@ if "chat_session" not in st.session_state or start_button:
 if end_button and "chat_session" in st.session_state:
     with st.spinner("AIが成績をまとめています..."):
         try:
-            st.session_state.api_calls.append(time.time())
-            summary_prompt = "ここまでの会話を終了します。私の英語の文法、語彙力、コミュニケーション力について、良かった点と今後の課題を日本語で総評してください。"
+            summary_prompt = "ここまでの会話を終了します。通信量削減のため、前置きは省き、私の英語の文法、語彙力、コミュニケーション力について、良かった点と課題を簡潔に箇条書きで総評してください。"
             response = st.session_state.chat_session.send_message(summary_prompt)
             st.session_state.messages.append({"role": "user", "content": "（会話を終了し、評価をリクエストしました）"})
             st.session_state.messages.append({"role": "assistant", "content": response.text})
@@ -192,8 +168,16 @@ st.write("🗣️ **あなたのターン（わからない時はギブアップ
 prompt = None
 display_prompt = None
 
+# ★改善：ギブアップ時の出力フォーマットを厳格な箇条書きに指定★
 if st.button("🆘 ギブアップ（今の質問の解説と回答例を見て次へ）"):
-    prompt = "今の質問の意図がわかりません（または英語でどう答えていいかわかりません）。あなたが最後に投げかけた質問の「日本語での意味・解説」と、私が答えるべきだった「模範的な回答例（英語と日本語）」を2〜3個教えてください。その後、会話を続けるための【新しい別の質問】を英語で1つだけ投げかけてください。フォーマットは必ず [フィードバック] と [英語の質問] を守ってください。"
+    prompt = """
+    今の質問の意図がわかりません。通信量削減のため、謝罪や無駄な前置きは一切省き、以下の構成で極めて簡潔に箇条書きで出力してください。その後、会話を続けるための【新しい別の質問】を英語で1つ投げかけてください。フォーマットは必ず [フィードバック] と [英語の質問] を守ってください。
+    
+    [フィードバック]
+    ・直前の質問の英語と日本語訳
+    ・質問の意図（1文で）
+    ・回答例（英語と日本語、2パターン程度）
+    """
     display_prompt = "（🆘 ギブアップして、質問の解説と回答例をリクエストしました）"
 
 audio_value = st.audio_input("マイクを押して録音開始 / 停止")
@@ -208,7 +192,6 @@ if audio_value is not None:
                 audio_data = {"mime_type": mime_type, "data": audio_bytes}
                 
                 transcriber = genai.GenerativeModel(selected_model)
-                st.session_state.api_calls.append(time.time())
                 res = transcriber.generate_content([audio_data, "聞こえた英語をそのまま文字起こししてください。文字のみを出力してください。"])
                 
                 if res.parts:
@@ -235,12 +218,8 @@ if prompt and display_prompt:
     
     with st.spinner("AIが返答を考えています..."):
         try:
-            st.session_state.api_calls.append(time.time())
             response = st.session_state.chat_session.send_message(prompt)
             st.session_state.messages.append({"role": "assistant", "content": response.text})
             st.rerun() 
         except Exception as e:
-            if "429" in str(e):
-                st.error("⚠️ 無料枠の休憩タイムです。少し待ってから送信してください☕")
-            else:
-                st.error("返答の作成中にエラーが発生しました。")
+            st.error("返答の作成中にエラーが発生しました。")
