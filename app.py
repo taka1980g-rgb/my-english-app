@@ -7,16 +7,18 @@ import io
 # === 🎨 画面デザインのカスタマイズ（CSS） ===
 st.markdown("""
     <style>
-    /* お助けツールの枠組み（コンテナ）の背景色を薄いグレーにする */
+    /* お助けツール全体の枠組み（コンテナ）の背景色を「薄い黄色」にして目立たせる */
     div[data-testid="stVerticalBlockBorderWrapper"] {
-        background-color: #F0F2F6;
-        border: 2px solid #E0E4E8;
+        background-color: #FFFDE7 !important; /* 薄い黄色 */
+        border: 2px solid #FFF59D !important; /* 少し濃い黄色の枠線 */
         border-radius: 10px;
-        padding: 10px;
+        padding: 15px;
     }
-    /* 内部のフォーム（検索窓など）は白くしてメリハリをつける */
+    /* 内部の入力フォーム（検索窓など）は白くして文字を見やすくする */
     div[data-testid="stForm"] {
-        background-color: #FFFFFF;
+        background-color: #FFFFFF !important;
+        border: 1px solid #E0E4E8 !important;
+        border-radius: 8px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -303,7 +305,7 @@ if "chat_session" in st.session_state:
 
         st.markdown("---")
         
-        # ★ お助けツール全体を独立したグレーのカード（コンテナ）で囲む
+        # ★ お助けツール全体を独立したコンテナで囲む（背景色は上のCSSで黄色になります）
         with st.container(border=True):
             st.write("🛠️ **お助けツール（※これらを使っても会話は先に進みません）**")
 
@@ -360,8 +362,45 @@ if "chat_session" in st.session_state:
                 else:
                     st.warning("翻訳できる質問が見つかりませんでした。")
             
-            st.write("🆘 **④ どうしても答えられない時**")
-            # ④ 究極の救済：ギブアップ
+            # ④ ちょい足しヒント機能
+            st.write("🧠 **④ ちょい足しヒント（自力で答えるためのアシスト）**")
+            with st.form("hint_form", clear_on_submit=False):
+                hint_col1, hint_col2 = st.columns([3, 2])
+                with hint_col1:
+                    hint_type = st.selectbox(
+                        "どんなヒントが欲しいですか？",
+                        [
+                            "使うべき英単語を3つ教えて",
+                            "文の出だし（最初の3〜4語）を教えて",
+                            "何て答えればいいか、日本語でアイデアを教えて"
+                        ],
+                        label_visibility="collapsed"
+                    )
+                with hint_col2:
+                    hint_btn = st.form_submit_button("ヒントをもらう🆘")
+                    
+                if hint_btn:
+                    if last_msg and last_msg["role"] == "assistant" and "[英語の質問]" in last_msg["content"]:
+                        eng_q = last_msg["content"].split("[英語の質問]")[1].strip()
+                        with st.spinner("ヒントを作成中..."):
+                            try:
+                                hint_ai = genai.GenerativeModel(selected_model)
+                                if hint_type == "使うべき英単語を3つ教えて":
+                                    hint_prompt = f"以下の質問に答えるために役立つ英単語（または熟語）を3つだけ、日本語の意味を添えて箇条書きで教えてください。英語の正解（フルセンテンス）は絶対に書かないでください。\n質問: {eng_q}"
+                                elif hint_type == "文の出だし（最初の3〜4語）を教えて":
+                                    hint_prompt = f"以下の質問に答えるための、自然な英文の書き出し（最初の3〜5語のみ）を1パターンだけ教えてください。日本語訳や解説、文の続きは絶対に書かないでください。\n質問: {eng_q}"
+                                else:
+                                    hint_prompt = f"以下の質問に対して、どのような内容を答えればよいか、日本語で簡潔に2つのアイデア（方向性）を提案してください。英語の解答例は絶対に書かないでください。\n質問: {eng_q}"
+
+                                hint_res = hint_ai.generate_content(hint_prompt)
+                                st.info(f"💡 **ヒント:**\n{hint_res.text.strip()}")
+                            except Exception as e:
+                                st.error("ヒントの作成に失敗しました。")
+                    else:
+                        st.warning("ヒントを出せる質問が見つかりませんでした。")
+            
+            # ⑤ 究極の救済：ギブアップ
+            st.write("🏳️ **⑤ どうしても答えられない時**")
             if st.button("ギブアップ（解説と回答例を見て、リピート練習へ進む）"):
                 prompt = """
                 今の質問の意図がわかりません。通信量削減のため、無駄な前置きは一切省き、以下の構成で極めて簡潔に出力してください。今回は【新しい質問は行わず】、私がそのまま復唱できる回答例を提示してください。
@@ -374,7 +413,7 @@ if "chat_session" in st.session_state:
                 [リピート練習]
                 （私がそのまま復唱して答えるための、英語の回答例のセリフのみ。複数の場合は一番標準的なものを1つだけ。絶対に新しい質問はしないこと）
                 """
-                display_prompt = "（🆘 ギブアップして、解説と回答例をリクエストしました）"
+                display_prompt = "（🏳️ ギブアップして、解説と回答例をリクエストしました）"
 
     # ＝＝＝ プロンプト送信処理（モード共通） ＝＝＝
     if prompt and display_prompt:
