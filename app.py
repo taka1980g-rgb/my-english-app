@@ -88,7 +88,7 @@ with st.sidebar:
     st.markdown("---")
     situation = st.text_area(
         "🎬 シチュエーション", 
-        "",
+        "例: 私の発表が終わった後の質疑応答の時間です。少し意地悪な質問をしてください。",
         height=100
     )
 
@@ -227,7 +227,6 @@ if "chat_session" in st.session_state:
                 st.session_state.last_practice_audio = audio_bytes
                 with st.spinner("AIが発音を厳しく判定中..."):
                     try:
-                        # まずは文字起こし
                         mime_type = practice_audio.type if hasattr(practice_audio, 'type') else "audio/wav"
                         audio_data = {"mime_type": mime_type, "data": audio_bytes}
                         transcriber = genai.GenerativeModel(selected_model)
@@ -237,7 +236,6 @@ if "chat_session" in st.session_state:
                             user_spoken_text = res.text.strip()
                             st.write(f"🎤 あなたの発音: **{user_spoken_text}**")
                             
-                            # ★変更：判定プロンプトを「厳格・忖度なし」に変更
                             judge_prompt = f"""
                             お手本の英文:「{target_practice_text}」
                             ユーザーの発音:「{user_spoken_text}」
@@ -256,70 +254,15 @@ if "chat_session" in st.session_state:
                     except Exception as e:
                         st.error("エラー: もう少しゆっくり、はっきりと話してみてください。")
         
-        # 満足したら次に進むボタン（仕様そのまま）
         if st.button("▶️ 満足したので次へ進む（会話を再開）", type="primary", use_container_width=True):
             prompt = "（リピート練習を完了しました。先ほどの続きから、会話を再開するための新しい質問を英語でしてください。）"
             display_prompt = "（✅ リピート練習を完了し、次へ進みました）"
             
     else:
         # ＝＝＝ 🗣️ 通常モードの画面 ＝＝＝
-        st.write("🛠️ **お助けツール（※これらを使っても会話は先に進みません）**")
-
-        # ① 直前の質問の日本語訳を見る機能
-        if st.button("🇯🇵 直前のAIのセリフの「日本語訳」だけを見る"):
-            if last_msg and last_msg["role"] == "assistant" and "[英語の質問]" in last_msg["content"]:
-                eng_q = last_msg["content"].split("[英語の質問]")[1].strip()
-                with st.spinner("翻訳中..."):
-                    try:
-                        translator = genai.GenerativeModel(selected_model)
-                        res = translator.generate_content(f"以下の英語を日本語に翻訳してください。出力は日本語のみで簡潔に。\n\n{eng_q}")
-                        st.info(f"🇯🇵 **日本語訳:**\n{res.text.strip()}")
-                    except Exception as e:
-                        st.error("翻訳に失敗しました。")
-            else:
-                st.warning("翻訳できる質問が見つかりませんでした。")
-
-        # ② わからない単語を調べる辞書機能
-        with st.form("dictionary_form", clear_on_submit=False):
-            col1, col2 = st.columns([4, 1])
-            with col1:
-                dict_word = st.text_input("📖 わからない単語の意味を調べる:", label_visibility="collapsed", placeholder="英単語を入力 (例: evidence)")
-            with col2:
-                dict_btn = st.form_submit_button("調べる🔍")
-        
-        if dict_btn and dict_word:
-            with st.spinner("調べています..."):
-                try:
-                    dictionary_ai = genai.GenerativeModel(selected_model)
-                    dict_res = dictionary_ai.generate_content(f"英単語「{dict_word}」の主な意味と、簡単な例文を1つ（日本語訳付きで）教えてください。簡潔に。")
-                    st.info(f"📖 **辞書:**\n{dict_res.text.strip()}")
-                except Exception as e:
-                    st.error("検索に失敗しました。")
-
-        # ③ お助け翻訳機能
-        st.write("💡 **お助け翻訳（言いたいことが英語で出てこない時）**")
-        with st.form("translation_form", clear_on_submit=False):
-            col1, col2 = st.columns([4, 1])
-            with col1:
-                jp_text = st.text_input("日本語で入力:", label_visibility="collapsed", placeholder="例: もう一度ゆっくり言ってください")
-            with col2:
-                trans_btn = st.form_submit_button("英訳する🔄")
-                
-        if trans_btn and jp_text:
-            with st.spinner("AIが英訳を考えています..."):
-                try:
-                    translator = genai.GenerativeModel(selected_model)
-                    trans_prompt = f"以下の日本語を、英会話のセリフとして自然な英語に翻訳してください。出力は英語のセリフのみとし、解説や前置きは一切不要です。\n\n日本語: {jp_text}"
-                    trans_res = translator.generate_content(trans_prompt)
-                    
-                    st.success(f"✨ こんな風に言ってみましょう！\n\n### {trans_res.text.strip()}\n\n👆 すぐ下のマイクボタンを押して、声に出して読んでみてください。")
-                except Exception as e:
-                    st.error("翻訳中にエラーが発生しました。")
-
-        st.markdown("---")
         st.write("🗣️ **あなたのターン（回答を録音して送信）**")
 
-        # 【メインアクション】
+        # ★変更点：マイク入力を一番上に持っこきました（視線移動の解消）
         audio_value = st.audio_input("マイクを押して回答を録音・送信")
 
         if audio_value is not None:
@@ -342,22 +285,81 @@ if "chat_session" in st.session_state:
                         st.error("エラー: もう少しゆっくり、はっきりと話してみてください。")
 
         st.markdown("---")
-        st.write("🆘 **どうしても答えられない時**")
         
-        # 究極の救済
-        if st.button("ギブアップ（解説と回答例を見て、リピート練習へ進む）"):
-            prompt = """
-            今の質問の意図がわかりません。通信量削減のため、無駄な前置きは一切省き、以下の構成で極めて簡潔に出力してください。今回は【新しい質問は行わず】、私がそのまま復唱できる回答例を提示してください。
+        # ★変更点：お助けツールをチェックボックス（開閉スイッチ）の中に収納しました
+        show_tools = st.checkbox("🛠️ お助けツールを開く（日本語訳・辞書・ギブアップなど）")
+
+        if show_tools:
+            st.write("※これらを使っても会話は先に進みません（ギブアップを除く）")
+
+            # ① 直前の質問の日本語訳を見る機能
+            if st.button("🇯🇵 直前のAIのセリフの「日本語訳」だけを見る"):
+                if last_msg and last_msg["role"] == "assistant" and "[英語の質問]" in last_msg["content"]:
+                    eng_q = last_msg["content"].split("[英語の質問]")[1].strip()
+                    with st.spinner("翻訳中..."):
+                        try:
+                            translator = genai.GenerativeModel(selected_model)
+                            res = translator.generate_content(f"以下の英語を日本語に翻訳してください。出力は日本語のみで簡潔に。\n\n{eng_q}")
+                            st.info(f"🇯🇵 **日本語訳:**\n{res.text.strip()}")
+                        except Exception as e:
+                            st.error("翻訳に失敗しました。")
+                else:
+                    st.warning("翻訳できる質問が見つかりませんでした。")
+
+            # ② わからない単語を調べる辞書機能
+            with st.form("dictionary_form", clear_on_submit=False):
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    dict_word = st.text_input("📖 わからない単語の意味を調べる:", label_visibility="collapsed", placeholder="英単語を入力 (例: evidence)")
+                with col2:
+                    dict_btn = st.form_submit_button("調べる🔍")
             
-            [フィードバック]
-            - 直前の質問の英語と日本語訳
-            - 質問の意図（1文で）
-            - この状況での自然な回答例の解説（日本語）
+            if dict_btn and dict_word:
+                with st.spinner("調べています..."):
+                    try:
+                        dictionary_ai = genai.GenerativeModel(selected_model)
+                        dict_res = dictionary_ai.generate_content(f"英単語「{dict_word}」の主な意味と、簡単な例文を1つ（日本語訳付きで）教えてください。簡潔に。")
+                        st.info(f"📖 **辞書:**\n{dict_res.text.strip()}")
+                    except Exception as e:
+                        st.error("検索に失敗しました。")
+
+            # ③ お助け翻訳機能
+            st.write("💡 **お助け翻訳（言いたいことが英語で出てこない時）**")
+            with st.form("translation_form", clear_on_submit=False):
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    jp_text = st.text_input("日本語で入力:", label_visibility="collapsed", placeholder="例: もう一度ゆっくり言ってください")
+                with col2:
+                    trans_btn = st.form_submit_button("英訳する🔄")
+                    
+            if trans_btn and jp_text:
+                with st.spinner("AIが英訳を考えています..."):
+                    try:
+                        translator = genai.GenerativeModel(selected_model)
+                        trans_prompt = f"以下の日本語を、英会話のセリフとして自然な英語に翻訳してください。出力は英語のセリフのみとし、解説や前置きは一切不要です。\n\n日本語: {jp_text}"
+                        trans_res = translator.generate_content(trans_prompt)
+                        
+                        st.success(f"✨ こんな風に言ってみましょう！\n\n### {trans_res.text.strip()}\n\n👆 少し上のマイクボタンを押して、声に出して読んでみてください。")
+                    except Exception as e:
+                        st.error("翻訳中にエラーが発生しました。")
+
+            st.markdown("---")
+            st.write("🆘 **どうしても答えられない時**")
             
-            [リピート練習]
-            （私がそのまま復唱して答えるための、英語の回答例のセリフのみ。複数の場合は一番標準的なものを1つだけ。絶対に新しい質問はしないこと）
-            """
-            display_prompt = "（🆘 ギブアップして、解説と回答例をリクエストしました）"
+            # 究極の救済
+            if st.button("ギブアップ（解説と回答例を見て、リピート練習へ進む）"):
+                prompt = """
+                今の質問の意図がわかりません。通信量削減のため、無駄な前置きは一切省き、以下の構成で極めて簡潔に出力してください。今回は【新しい質問は行わず】、私がそのまま復唱できる回答例を提示してください。
+                
+                [フィードバック]
+                - 直前の質問の英語と日本語訳
+                - 質問の意図（1文で）
+                - この状況での自然な回答例の解説（日本語）
+                
+                [リピート練習]
+                （私がそのまま復唱して答えるための、英語の回答例のセリフのみ。複数の場合は一番標準的なものを1つだけ。絶対に新しい質問はしないこと）
+                """
+                display_prompt = "（🆘 ギブアップして、解説と回答例をリクエストしました）"
 
     # ＝＝＝ プロンプト送信処理（モード共通） ＝＝＝
     if prompt and display_prompt:
