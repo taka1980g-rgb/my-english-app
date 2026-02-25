@@ -91,7 +91,7 @@ with st.sidebar:
     st.markdown("---")
     situation = st.text_area(
         "🎬 シチュエーション", 
-        "例: 私の発表が終わった後の質疑応答の時間です。少し意地悪な質問をしてください。",
+        "例: 小学校３年生の算数。",
         height=100
     )
     
