@@ -9,7 +9,7 @@ import re
 # ==========================================================
 # 🔑 ここに取得したAPIキーを貼り付けてください（" " の中にコピペ）
 # ==========================================================
-MY_API_KEY = "AIzaSyDJeJIYgFQ9pE6uMTjE1U5D2STMTX5uPjs"
+MY_API_KEY = "ここにAPIキーを貼り付けてください"
 
 st.title("My English Roleplay AI 🗣️")
 
@@ -59,7 +59,6 @@ with st.sidebar:
         ]
     )
     
-    # === 新機能：質問者の役割を追加 ===
     st.markdown("---")
     questioner = st.text_input(
         "👤 質問者（AIの役割）", 
@@ -107,7 +106,6 @@ doc_text = ""
 if uploaded_file is not None:
     doc_text = extract_text(uploaded_file)
 
-# === AIへの指示を強化：「質問者」になりきるよう設定 ===
 system_instruction = f"""
 あなたは優秀なネイティブ英語教師であり、英会話のロールプレイング相手です。
 
@@ -169,9 +167,18 @@ for message in st.session_state.messages:
                         pass
 
 st.markdown("---")
-st.write("🗣️ **あなたのターン（音声か文字で返答してください）**")
+st.write("🗣️ **あなたのターン（わからない時はギブアップもOK！）**")
 
+# AIに送る指示（prompt）と、画面に表示する文字（display_prompt）を分ける
 prompt = None
+display_prompt = None
+
+# === 新機能：ギブアップボタン ===
+if st.button("🆘 ギブアップ（今の質問の解説と回答例を見て次へ）"):
+    prompt = "今の質問の意図がわかりません（または英語でどう答えていいかわかりません）。あなたが最後に投げかけた質問の「日本語での意味・解説」と、私が答えるべきだった「模範的な回答例（英語と日本語）」を2〜3個教えてください。その後、会話を続けるための【新しい別の質問】を英語で1つだけ投げかけてください。フォーマットは必ず [フィードバック] と [英語の質問] を守ってください。"
+    display_prompt = "（🆘 ギブアップして、質問の解説と回答例をリクエストしました）"
+
+# 音声入力（マイク）
 audio_value = st.audio_input("マイクを押して録音開始 / 停止")
 
 if audio_value is not None:
@@ -189,11 +196,13 @@ if audio_value is not None:
                 
                 if res.parts:
                     prompt = res.text.strip()
+                    display_prompt = prompt
                 else:
                     st.warning("音声から文字を抽出できませんでした。")
             except Exception as e:
                 st.error("エラー: もう少しゆっくり、はっきりと話してみてください。")
 
+# 文字入力（テキスト）
 with st.form("text_input_form", clear_on_submit=True):
     col1, col2 = st.columns([4, 1])
     with col1:
@@ -203,9 +212,11 @@ with st.form("text_input_form", clear_on_submit=True):
         
     if submit_btn and text_prompt:
         prompt = text_prompt
+        display_prompt = text_prompt
 
-if prompt:
-    st.session_state.messages.append({"role": "user", "content": prompt})
+# 送信処理（ギブアップ、音声、文字すべて共通）
+if prompt and display_prompt:
+    st.session_state.messages.append({"role": "user", "content": display_prompt})
     
     with st.spinner("AIが返答を考えています..."):
         try:
