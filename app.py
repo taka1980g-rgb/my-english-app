@@ -38,12 +38,12 @@ if api_key:
     
     # 会話の履歴を保存する準備
     if "chat_session" not in st.session_state or start_button:
-        # Gemini AIの呼び出し
-        model = genai.GenerativeModel('gemini-1.5-flash', system_instruction=system_instruction)
+        # ★ここを修正しました（-latest を追加）★
+        model = genai.GenerativeModel('gemini-1.5-flash-latest', system_instruction=system_instruction)
         st.session_state.chat_session = model.start_chat(history=[])
         st.session_state.messages = []
         
-        # 最初のAIからの挨拶（裏側でAIに指示を出して最初の質問を引き出す）
+        # 最初のAIからの挨拶
         response = st.session_state.chat_session.send_message("シチュエーションを開始して、最初の質問を英語でしてください。")
         st.session_state.messages.append({"role": "assistant", "content": response.text})
 
