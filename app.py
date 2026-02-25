@@ -7,16 +7,15 @@ import io
 # === 🎨 画面デザインのカスタマイズ（CSS） ===
 st.markdown("""
     <style>
-    /* 録音ボタン（audio_input）を大きく、目立たせる */
+    /* 録音ボタンを強調 */
     [data-testid="stAudioInput"] {
         border: 2px solid #FF4B4B;
         border-radius: 15px;
         padding: 10px;
         background-color: #FFF5F5;
-        transform: scale(1.05); /* 少しだけ全体を大きく */
         margin-bottom: 20px;
     }
-    /* 「録音開始」の案内テキストを強調 */
+    /* ガイドテキストの装飾 */
     .mic-guide {
         font-size: 1.2rem;
         font-weight: bold;
@@ -25,7 +24,7 @@ st.markdown("""
         margin-bottom: 5px;
     }
     </style>
-    """, unsafe_allow_stdio=True)
+    """, unsafe_allow_html=True) # ←ここを修正しました！
 
 # === 🚪 入場パスワードのチェック ===
 APP_PASSWORD = st.secrets.get("APP_PASSWORD", "1234")
@@ -85,7 +84,6 @@ with st.sidebar:
     start_button = st.button("▶️ 会話をリセットしてスタート", type="primary", use_container_width=True)
     end_button = st.button("🛑 会話を終了して評価をもらう", use_container_width=True)
 
-# (テキスト抽出関数などは省略せず保持)
 def extract_text(file):
     text = ""
     if file.name.endswith('.pdf'):
@@ -136,7 +134,6 @@ if "chat_session" in st.session_state:
                     except: pass
 
     st.markdown("---")
-    # ★改善：録音エリアを強調★
     st.markdown('<p class="mic-guide">👇 録音ボタンを押して英語で話してね！</p>', unsafe_allow_html=True)
     audio_value = st.audio_input("録音ボタン（マイク）")
 
