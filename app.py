@@ -229,16 +229,26 @@ if "chat_session" in st.session_state:
                 except Exception as e:
                     st.error("エラー: もう少しゆっくり、はっきりと話してみてください。")
 
-    with st.form("text_input_form", clear_on_submit=True):
+    st.markdown("---")
+    st.write("💡 **お助け翻訳（言いたいことが英語で出てこない時）**")
+    with st.form("translation_form", clear_on_submit=False):
         col1, col2 = st.columns([4, 1])
         with col1:
-            text_prompt = st.text_input("文字で入力する場合:", label_visibility="collapsed", placeholder="英語で入力...")
+            jp_text = st.text_input("日本語で入力:", label_visibility="collapsed", placeholder="例: もう一度ゆっくり言ってください")
         with col2:
-            submit_btn = st.form_submit_button("送信📤")
+            trans_btn = st.form_submit_button("英訳する🔄")
             
-        if submit_btn and text_prompt:
-            prompt = text_prompt
-            display_prompt = text_prompt
+    if trans_btn and jp_text:
+        with st.spinner("AIが英訳を考えています..."):
+            try:
+                # 翻訳専用にAIを単発で呼び出す（本筋の会話履歴には影響させません）
+                translator = genai.GenerativeModel(selected_model)
+                trans_prompt = f"以下の日本語を、英会話のセリフとして自然な英語に翻訳してください。出力は英語のセリフのみとし、解説や前置きは一切不要です。\n\n日本語: {jp_text}"
+                trans_res = translator.generate_content(trans_prompt)
+                
+                st.success(f"✨ こんな風に言ってみましょう！\n\n### {trans_res.text.strip()}\n\n👆 上のマイクボタンを押して、声に出して読んでみてください。")
+            except Exception as e:
+                st.error("翻訳中にエラーが発生しました。")
 
     if prompt and display_prompt:
         st.session_state.messages.append({"role": "user", "content": display_prompt})
