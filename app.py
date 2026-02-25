@@ -3,6 +3,21 @@ import google.generativeai as genai
 from gtts import gTTS
 import PyPDF2
 import io
+import re  # 正規表現（カッコ除去用）を追加
+
+# === 🎨 デザインの追加（見た目だけを変える安全なコード） ===
+st.markdown("""
+    <style>
+    /* 録音ボタンを目立たせる */
+    [data-testid="stAudioInput"] {
+        border: 2px solid #FF4B4B;
+        border-radius: 15px;
+        padding: 10px;
+        background-color: #FFF5F5;
+        margin-bottom: 20px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 # === 🚪 入場パスワードのチェック ===
 APP_PASSWORD = st.secrets.get("APP_PASSWORD", "1234")
@@ -20,17 +35,14 @@ if not st.session_state["password_correct"]:
         st.error("パスワードが違います👀")
     st.stop() 
 
-# ==========================================================
-# 🔑 StreamlitのSecrets（金庫）からAPIキーを自動で読み込む
-# ==========================================================
+# === 🔑 API設定 ===
 try:
     MY_API_KEY = st.secrets["GEMINI_API_KEY"]
 except Exception:
     MY_API_KEY = ""
-    st.error("⚠️ StreamlitのSettingsから「Secrets」を開き、GEMINI_API_KEY を設定してください！")
+    st.error("⚠️ Secretsを設定してください！")
     st.stop()
 
-# APIキーをセット
 genai.configure(api_key=MY_API_KEY.strip())
 
 st.title("My English Roleplay AI 🗣️")
@@ -38,19 +50,12 @@ st.title("My English Roleplay AI 🗣️")
 with st.sidebar:
     st.header("⚙️ 設定メニュー")
     
-    # ★改善：無駄な通信を削り、モデルを2つに固定化★
     st.write("🧠 AIモデル")
     model_options = {
         "Gemini 2.5 Flash (高速・汎用)": "gemini-2.5-flash",
         "Gemini 2.5 Flash-Lite (最速・低コスト)": "gemini-2.5-flash-lite"
     }
-    # 画面に表示する名前を選ばせる（初期値は0番目のFlash）
-    selected_display_name = st.selectbox(
-        "使用中の脳みそ", 
-        list(model_options.keys()), 
-        index=0
-    )
-    # 選ばれた表示名から、裏側で使う本当のモデル名を引っ張り出す
+    selected_display_name = st.selectbox("使用中の脳みそ", list(model_options.keys()), index=0)
     selected_model = model_options[selected_display_name]
             
     st.markdown("---")
@@ -73,14 +78,7 @@ with st.sidebar:
     st.write("👤 質問者（AIの役割）")
     preset_questioner = st.selectbox(
         "AIの役柄を選んでください",
-        [
-            "小学校の先生",
-            "同年代の友達",
-            "職場の先輩",
-            "気さくな友達",
-            "学会発表の聴衆",
-            "その他（自由入力）"
-        ]
+        ["小学校の先生", "同年代の友達", "職場の先輩", "気さくな友達", "学会発表の聴衆", "その他（自由入力）"]
     )
     
     if preset_questioner == "その他（自由入力）":
@@ -89,14 +87,9 @@ with st.sidebar:
         questioner = preset_questioner
     
     st.markdown("---")
-    situation = st.text_area(
-        "🎬 シチュエーション", 
-        "例: 私の発表が終わった後の質疑応答の時間です。少し意地悪な質問をしてください。",
-        height=100
-    )
+    situation = st.text_area("🎬 シチュエーション", "例: 好きな食べ物について話しましょう。", height=100)
     
     st.markdown("---")
-    st.write("📁 資料を読み込ませる")
     uploaded_file = st.file_uploader("PDF/TXTファイル", type=["pdf", "txt"])
     
     st.markdown("---")
@@ -107,38 +100,25 @@ def extract_text(file):
     text = ""
     if file.name.endswith('.pdf'):
         reader = PyPDF2.PdfReader(file)
-        for page in reader.pages:
-            text += page.extract_text() + "\n"
+        for page in reader.pages: text += page.extract_text() + "\n"
     elif file.name.endswith('.txt'):
         text = file.read().decode('utf-8')
     return text
 
-doc_text = ""
-if uploaded_file is not None:
-    doc_text = extract_text(uploaded_file)
+doc_text = extract_text(uploaded_file) if uploaded_file else ""
 
 system_instruction = f"""
 あなたは英会話のロールプレイング相手です。
-
-【あなたの役柄（AI自身）】: {questioner}
+【あなたの役柄】: {questioner}
 【ユーザーの名前】: {user_name}
 【設定レベル】: {level}
 【シチュエーション】: {situation}
 【参考資料】: {doc_text}
 
 厳密なルール:
-1. あなた自身が【あなたの役柄】です。目の前にいる会話相手が【ユーザーの名前】です。
-2. ユーザーの【設定レベル】に合わせて英単語の難易度や文章の長さを調整してください。
-3. 通信量削減のため、感情表現や前置きは一切不要です。客観的かつ極めて簡潔に出力してください。
-4. フィードバックは、必ずMarkdown形式の箇条書き（- ）を使用し、各項目の後には必ず改行を入れて、1行ずつ独立させて表示してください。横に繋げて書くのは厳禁です。
-5. 必ず以下の「指定フォーマット」で出力してください。
-
-[フィードバック]
-- （文法チェックや指摘事項1）
-- （文法チェックや指摘事項2）
-
-[英語の質問]
-（【あなたの役柄】としてユーザーに投げかける英語のセリフや質問文のみ）
+1. 感情表現や前置きは不要。簡潔に出力してください。
+2. フィードバックはMarkdown形式の箇条書き（- ）で。
+3. 必ず [フィードバック] と [英語の質問]（カッコ内に日本語訳）の形式で出力してください。
 """
 
 if "last_played_msg_idx" not in st.session_state:
@@ -150,45 +130,34 @@ if start_button:
         st.session_state.chat_session = model.start_chat(history=[])
         st.session_state.messages = []
         st.session_state.last_played_msg_idx = -1
-        
         response = st.session_state.chat_session.send_message("シチュエーションを開始して、最初の質問を英語でしてください。")
         st.session_state.messages.append({"role": "assistant", "content": response.text})
     except Exception as e:
-        st.error(f"AIの準備中にエラーが発生しました: {e}")
+        st.error(f"エラー: {e}")
 
 if end_button and "chat_session" in st.session_state:
     with st.spinner("AIが成績をまとめています..."):
-        try:
-            summary_prompt = "ここまでの会話を終了します。通信量削減のため、前置きは省き、私の英語の文法、語彙力、コミュニケーション力について、良かった点と課題を各項目ごとに改行を入れた箇条書きで簡潔に総評してください。"
-            response = st.session_state.chat_session.send_message(summary_prompt)
-            st.session_state.messages.append({"role": "user", "content": "（会話を終了し、評価をリクエストしました）"})
-            st.session_state.messages.append({"role": "assistant", "content": response.text})
-        except Exception as e:
-            st.error("評価の作成中にエラーが発生しました。")
+        response = st.session_state.chat_session.send_message("これまでの会話を終了し、簡潔に総評してください。")
+        st.session_state.messages.append({"role": "assistant", "content": response.text})
 
 if "chat_session" in st.session_state:
     for i, message in enumerate(st.session_state.messages):
-        if "role" in message and "content" in message:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
-                
-                if message["role"] == "assistant" and "[英語の質問]" in message["content"]:
-                    english_part = message["content"].split("[英語の質問]")[1].strip()
-                    if english_part:
-                        try:
-                            tts = gTTS(text=english_part, lang='en')
-                            fp = io.BytesIO()
-                            tts.write_to_fp(fp)
-                            fp.seek(0)
-                            
-                            auto_play = False
-                            if i == len(st.session_state.messages) - 1 and st.session_state.last_played_msg_idx != i:
-                                auto_play = True
-                                st.session_state.last_played_msg_idx = i
-                                
-                            st.audio(fp, format="audio/mp3", autoplay=auto_play)
-                        except Exception:
-                            pass
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+            if message["role"] == "assistant" and "[英語の質問]" in message["content"]:
+                english_part = message["content"].split("[英語の質問]")[1].strip()
+                if english_part:
+                    # ★改善：カッコ内の日本語を除去して英語だけを読み上げる★
+                    clean_english = re.sub(r'\(.*?\)', '', english_part).strip()
+                    try:
+                        tts = gTTS(text=clean_english, lang='en')
+                        fp = io.BytesIO()
+                        tts.write_to_fp(fp)
+                        fp.seek(0)
+                        auto_play = (i == len(st.session_state.messages) - 1 and st.session_state.last_played_msg_idx != i)
+                        if auto_play: st.session_state.last_played_msg_idx = i
+                        st.audio(fp, format="audio/mp3", autoplay=auto_play)
+                    except: pass
 
     st.markdown("---")
     st.write("🗣️ **あなたのターン（わからない時はギブアップもOK！）**")
@@ -196,16 +165,9 @@ if "chat_session" in st.session_state:
     prompt = None
     display_prompt = None
 
-    if st.button("🆘 ギブアップ（今の質問の解説と回答例を見て次へ）"):
-        prompt = """
-        今の質問の意図がわかりません。通信量削減のため、無駄な前置きは一切省き、以下の構成で極めて簡潔に出力してください。必ず各項目のあとに改行を入れ、箇条書きが横に繋がらないようにしてください。その後、会話を続けるための【新しい別の質問】を英語で1つ投げかけてください。フォーマットは必ず [フィードバック] と [英語の質問] を守ってください。
-        
-        [フィードバック]
-        - 直前の質問の英語と日本語訳
-        - 質問の意図（1文で）
-        - 回答例（英語と日本語、2パターン程度）
-        """
-        display_prompt = "（🆘 ギブアップして、質問の解説と回答例をリクエストしました）"
+    if st.button("🆘 ギブアップ（解説を見る）"):
+        prompt = "今の質問の意図、日本語訳、回答例を教えてください。その後、別の質問を英語でしてください。"
+        display_prompt = "（🆘 ギブアップして、解説をリクエストしました）"
 
     audio_value = st.audio_input("マイクを押して録音開始 / 停止")
 
@@ -213,42 +175,34 @@ if "chat_session" in st.session_state:
         audio_bytes = audio_value.getvalue()
         if "last_audio_bytes" not in st.session_state or st.session_state.last_audio_bytes != audio_bytes:
             st.session_state.last_audio_bytes = audio_bytes
-            with st.spinner("音声を文字に変換しています..."):
+            with st.spinner("変換中..."):
                 try:
-                    mime_type = audio_value.type if hasattr(audio_value, 'type') else "audio/wav"
-                    audio_data = {"mime_type": mime_type, "data": audio_bytes}
-                    
                     transcriber = genai.GenerativeModel(selected_model)
-                    res = transcriber.generate_content([audio_data, "聞こえた英語をそのまま文字起こししてください。文字のみを出力してください。"])
-                    
-                    if res.parts:
+                    res = transcriber.generate_content([{"mime_type": "audio/wav", "data": audio_bytes}, "聞こえた英語をそのまま文字起こししてください。"])
+                    if res.text:
                         prompt = res.text.strip()
                         display_prompt = prompt
-                    else:
-                        st.warning("音声から文字を抽出できませんでした。")
                 except Exception as e:
-                    st.error("エラー: もう少しゆっくり、はっきりと話してみてください。")
+                    st.error("エラー: もう少しはっきりと話してみてください。")
 
     with st.form("text_input_form", clear_on_submit=True):
         col1, col2 = st.columns([4, 1])
         with col1:
-            text_prompt = st.text_input("文字で入力する場合:", label_visibility="collapsed", placeholder="英語で入力...")
+            text_prompt = st.text_input("文字で入力:", label_visibility="collapsed", placeholder="英語で入力...")
         with col2:
             submit_btn = st.form_submit_button("送信📤")
-            
         if submit_btn and text_prompt:
             prompt = text_prompt
             display_prompt = text_prompt
 
     if prompt and display_prompt:
         st.session_state.messages.append({"role": "user", "content": display_prompt})
-        
         with st.spinner("AIが返答を考えています..."):
             try:
                 response = st.session_state.chat_session.send_message(prompt)
                 st.session_state.messages.append({"role": "assistant", "content": response.text})
                 st.rerun() 
-            except Exception as e:
-                st.error("返答の作成中にエラーが発生しました。")
+            except:
+                st.error("エラーが発生しました。")
 else:
-    st.info("👈 左側のメニューで役割やシチュエーションを設定し、「▶️ 会話をリセットしてスタート」ボタンを押して開始してください。")
+    st.info("👈 左側のメニューを設定し、スタートボタンを押してください。")
