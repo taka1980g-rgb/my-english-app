@@ -4,6 +4,24 @@ from gtts import gTTS
 import PyPDF2
 import io
 
+# === 🚪 入場パスワードのチェック ===
+# Secretsから合言葉を取得（設定されていなければ "1234" になる）
+APP_PASSWORD = st.secrets.get("APP_PASSWORD", "1234")
+
+# まだパスワードをクリアしていない場合の画面
+if "password_correct" not in st.session_state:
+    st.session_state["password_correct"] = False
+
+if not st.session_state["password_correct"]:
+    st.title("🔒 家族専用 AI英会話")
+    pwd = st.text_input("合言葉（パスワード）を入力してください", type="password")
+    if pwd == APP_PASSWORD:
+        st.session_state["password_correct"] = True
+        st.rerun()
+    elif pwd != "":
+        st.error("パスワードが違います👀")
+    st.stop() # パスワードが合うまで、ここから下のプログラムは一切動かさない
+
 # ==========================================================
 # 🔑 StreamlitのSecrets（金庫）からAPIキーを自動で読み込む
 # ==========================================================
@@ -124,7 +142,6 @@ system_instruction = f"""
 （【あなたの役柄】としてユーザーに投げかける英語のセリフや質問文のみ）
 """
 
-# ★オートプレイ管理用のフラグを準備★
 if "last_played_msg_idx" not in st.session_state:
     st.session_state.last_played_msg_idx = -1
 
@@ -133,7 +150,7 @@ if "chat_session" not in st.session_state or start_button:
         model = genai.GenerativeModel(selected_model, system_instruction=system_instruction)
         st.session_state.chat_session = model.start_chat(history=[])
         st.session_state.messages = []
-        st.session_state.last_played_msg_idx = -1 # 新しい会話の時はフラグもリセット
+        st.session_state.last_played_msg_idx = -1
         
         response = st.session_state.chat_session.send_message("シチュエーションを開始して、最初の質問を英語でしてください。")
         st.session_state.messages.append({"role": "assistant", "content": response.text})
@@ -164,7 +181,6 @@ for i, message in enumerate(st.session_state.messages):
                         tts.write_to_fp(fp)
                         fp.seek(0)
                         
-                        # ★改善：最新のメッセージだけ1回自動再生する★
                         auto_play = False
                         if i == len(st.session_state.messages) - 1 and st.session_state.last_played_msg_idx != i:
                             auto_play = True
