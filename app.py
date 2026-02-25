@@ -209,33 +209,46 @@ if "chat_session" in st.session_state:
     
     last_msg = st.session_state.messages[-1] if len(st.session_state.messages) > 0 else None
     is_practice = False
+    target_practice_text = ""
+    
     if last_msg and last_msg["role"] == "assistant" and "[リピート練習]" in last_msg["content"]:
         is_practice = True
+        target_practice_text = last_msg["content"].split("[リピート練習]")[1].strip()
 
     if is_practice:
-        # ＝＝＝ 🔄 リピート練習モードの画面 ＝＝＝
-        st.info("🔄 **リピート練習モード**：上のお手本を聞いて、正しく発音できるかマイクで確認しましょう。満足したら「次へ進む」を押してください。")
+        # ＝＝＝ 🔄 リピート練習モードの画面（AI判定付き） ＝＝＝
+        st.info("🔄 **リピート練習モード**：上のお手本を聞いて、マイクで発音してみましょう。")
         
-        practice_audio = st.audio_input("発音チェック（録音して文字起こし）")
+        practice_audio = st.audio_input("発音をチェックする")
         
         if practice_audio is not None:
             audio_bytes = practice_audio.getvalue()
             if "last_practice_audio" not in st.session_state or st.session_state.last_practice_audio != audio_bytes:
                 st.session_state.last_practice_audio = audio_bytes
-                with st.spinner("文字起こし中..."):
+                with st.spinner("AIが発音を判定中..."):
                     try:
+                        # まずは文字起こし
                         mime_type = practice_audio.type if hasattr(practice_audio, 'type') else "audio/wav"
                         audio_data = {"mime_type": mime_type, "data": audio_bytes}
                         transcriber = genai.GenerativeModel(selected_model)
                         res = transcriber.generate_content([audio_data, "聞こえた英語をそのまま文字起こししてください。文字のみを出力してください。"])
                         
                         if res.parts:
-                            st.success(f"🎤 あなたの発音: **{res.text.strip()}**")
+                            user_spoken_text = res.text.strip()
+                            st.write(f"🎤 あなたの発音: **{user_spoken_text}**")
+                            
+                            # ★追加：お手本と聞き比べてAIが判定する
+                            judge_prompt = f"お手本の英文:「{target_practice_text}」\nユーザーの発音:「{user_spoken_text}」\nユーザーがお手本通りに発音できたか、日本語で短く（1〜2文で）判定し、優しく励ましてあげてください。解説は不要です。"
+                            judge_model = genai.GenerativeModel(selected_model)
+                            judge_res = judge_model.generate_content(judge_prompt)
+                            
+                            st.success(f"🤖 AI判定: {judge_res.text.strip()}")
                         else:
                             st.warning("音声から文字を抽出できませんでした。")
                     except Exception as e:
                         st.error("エラー: もう少しゆっくり、はっきりと話してみてください。")
         
+        # 満足したら次に進むボタン（仕様そのまま）
         if st.button("▶️ 満足したので次へ進む（会話を再開）", type="primary", use_container_width=True):
             prompt = "（リピート練習を完了しました。先ほどの続きから、会話を再開するための新しい質問を英語でしてください。）"
             display_prompt = "（✅ リピート練習を完了し、次へ進みました）"
@@ -298,7 +311,7 @@ if "chat_session" in st.session_state:
         st.markdown("---")
         st.write("🗣️ **あなたのターン（回答を録音して送信）**")
 
-        # 【メインアクション】★マイク入力をここに移動しました★
+        # 【メインアクション】
         audio_value = st.audio_input("マイクを押して回答を録音・送信")
 
         if audio_value is not None:
@@ -323,7 +336,7 @@ if "chat_session" in st.session_state:
         st.markdown("---")
         st.write("🆘 **どうしても答えられない時**")
         
-        # 究極の救済：★ギブアップ時のプロンプトを書き換え、AIに「練習モード」へ移行させるようにしました★
+        # 究極の救済
         if st.button("ギブアップ（解説と回答例を見て、リピート練習へ進む）"):
             prompt = """
             今の質問の意図がわかりません。通信量削減のため、無駄な前置きは一切省き、以下の構成で極めて簡潔に出力してください。今回は【新しい質問は行わず】、私がそのまま復唱できる回答例を提示してください。
