@@ -88,7 +88,7 @@ with st.sidebar:
     st.markdown("---")
     situation = st.text_area(
         "🎬 シチュエーション", 
-        "例: 私の発表が終わった後の質疑応答の時間です。少し意地悪な質問をしてください。",
+        "",
         height=100
     )
 
@@ -225,7 +225,7 @@ if "chat_session" in st.session_state:
             audio_bytes = practice_audio.getvalue()
             if "last_practice_audio" not in st.session_state or st.session_state.last_practice_audio != audio_bytes:
                 st.session_state.last_practice_audio = audio_bytes
-                with st.spinner("AIが発音を判定中..."):
+                with st.spinner("AIが発音を厳しく判定中..."):
                     try:
                         # まずは文字起こし
                         mime_type = practice_audio.type if hasattr(practice_audio, 'type') else "audio/wav"
@@ -237,8 +237,16 @@ if "chat_session" in st.session_state:
                             user_spoken_text = res.text.strip()
                             st.write(f"🎤 あなたの発音: **{user_spoken_text}**")
                             
-                            # ★追加：お手本と聞き比べてAIが判定する
-                            judge_prompt = f"お手本の英文:「{target_practice_text}」\nユーザーの発音:「{user_spoken_text}」\nユーザーがお手本通りに発音できたか、日本語で短く（1〜2文で）判定し、優しく励ましてあげてください。解説は不要です。"
+                            # ★変更：判定プロンプトを「厳格・忖度なし」に変更
+                            judge_prompt = f"""
+                            お手本の英文:「{target_practice_text}」
+                            ユーザーの発音:「{user_spoken_text}」
+                            
+                            上記を比較し、ユーザーがお手本と【一言一句同じ】に発音できたかを厳格に判定してください。
+                            - 1単語でも違いや抜け漏れ、余計な単語があれば、容赦なく「どこが違ったか」を指摘してください。
+                            - 完璧に一致した場合のみ合格としてください。
+                            - 忖度や過剰な励ましは一切不要です。日本語で簡潔に（1〜2文）出力してください。
+                            """
                             judge_model = genai.GenerativeModel(selected_model)
                             judge_res = judge_model.generate_content(judge_prompt)
                             
