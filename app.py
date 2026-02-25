@@ -59,7 +59,6 @@ if api_key:
         doc_text = extract_text(uploaded_file)
         st.sidebar.success("資料の読み込みが完了しました！")
 
-    # AIへの強力な指示書（プロンプト）
     system_instruction = f"""
     あなたは優秀なネイティブ英語教師であり、英会話のロールプレイング相手です。
     
@@ -71,12 +70,12 @@ if api_key:
     1. ユーザーの【設定レベル】に合わせて、使用する英単語の難易度や文章の長さを厳密に調整してください。
     2. 【参考資料】がある場合は、必ずその資料の内容に基づいた質疑応答を行ってください。
     3. ユーザーが英語で返答したら、文法チェックやより自然な表現を日本語でフィードバックしてください。
-    4. 必ず以下の「指定フォーマット」で出力してください。これ以外の書き方は絶対にしないでください。
+    4. 必ず以下の「指定フォーマット」で出力してください。
     
     [フィードバック]
-    （ここに日本語での文法チェックや解説。最初のターンの場合は「設定を読み込みました。会話をスタートします」等でOK）
+    （ここに日本語での文法チェックや解説。最初のターンの場合は「設定を読み込みました」等でOK）
     [英語の質問]
-    （ここに次にユーザーに投げかける英語の質問文。※この部分だけがシステムによって音声化されます）
+    （ここに次にユーザーに投げかける英語の質問文）
     """
     
     if "chat_session" not in st.session_state or start_button:
@@ -90,14 +89,12 @@ if api_key:
         except Exception as e:
             st.error(f"AIの準備中にエラーが発生しました: {e}")
 
-    # これまでの会話履歴と音声再生ボタンを画面に表示
+    # これまでの会話履歴と音声再生ボタンを表示
     for message in st.session_state.messages:
         if "role" in message and "content" in message:
             with st.chat_message(message["role"]):
-                # 画面にはAIのテキストをそのまま表示
                 st.markdown(message["content"])
                 
-                # AIの返答の中に[英語の質問]という区切りがあれば、そこだけを抜き出して音声化する
                 if message["role"] == "assistant" and "[英語の質問]" in message["content"]:
                     english_part = message["content"].split("[英語の質問]")[1].strip()
                     if english_part:
@@ -106,13 +103,42 @@ if api_key:
                             fp = io.BytesIO()
                             tts.write_to_fp(fp)
                             fp.seek(0)
-                            # 音声プレイヤーを表示（ここでは自動再生しない）
                             st.audio(fp, format="audio/mp3")
-                        except Exception as e:
-                            st.warning("音声の生成に失敗しました。")
+                        except Exception:
+                            pass
 
-    # ユーザーの入力欄と送信処理
-    if prompt := st.chat_input("英語で返答を入力してください..."):
+    st.markdown("---")
+    
+    # ===== ここから新しい入力エリア =====
+    prompt = None
+
+    # 音声入力（マイク）ウィジェット
+    st.write("🎤 音声で返答する（※ブラウザのマイク許可が必要です）")
+    audio_value = st.audio_input("録音ボタンを押して英語で話す")
+
+    # 新しい音声が録音された場合の処理
+    if audio_value is not None:
+        audio_bytes = audio_value.getvalue()
+        # 同じ音声を何度も処理しないためのストッパー
+        if "last_audio_bytes" not in st.session_state or st.session_state.last_audio_bytes != audio_bytes:
+            st.session_state.last_audio_bytes = audio_bytes
+            with st.spinner("音声を文字に変換しています..."):
+                try:
+                    # Geminiに音声を渡して文字起こしさせる
+                    audio_data = {"mime_type": "audio/wav", "data": audio_bytes}
+                    transcriber = genai.GenerativeModel('gemini-2.5-flash')
+                    res = transcriber.generate_content([audio_data, "聞こえた英語をそのまま文字起こししてください。文字のみを出力してください。"])
+                    prompt = res.text.strip()
+                except Exception as e:
+                    st.error("音声の読み取りに失敗しました。もう少し大きな声で話してみてください。")
+
+    # テキスト入力（文字で打ちたい場合）
+    text_prompt = st.chat_input("または、文字で入力...")
+    if text_prompt:
+        prompt = text_prompt
+
+    # 音声またはテキストで入力があった場合の共通送信処理
+    if prompt:
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
@@ -123,7 +149,7 @@ if api_key:
                 st.markdown(response.text)
                 st.session_state.messages.append({"role": "assistant", "content": response.text})
                 
-                # 返答が来たら、最新の英語部分だけを「自動再生」する
+                # 自動再生
                 if "[英語の質問]" in response.text:
                     english_part = response.text.split("[英語の質問]")[1].strip()
                     if english_part:
@@ -131,7 +157,6 @@ if api_key:
                         fp = io.BytesIO()
                         tts.write_to_fp(fp)
                         fp.seek(0)
-                        # autoplay=True で自動的に喋り出す
                         st.audio(fp, format="audio/mp3", autoplay=True)
             except Exception as e:
                 st.error(f"返答の作成中にエラーが発生しました: {e}")
