@@ -23,6 +23,30 @@ with st.sidebar:
     st.header("⚙️ 初期設定")
     api_key = st.text_input("Gemini APIキー", type="password")
     
+    # === 新機能：使えるAIを自動で取得してリスト化する ===
+    selected_model = "gemini-1.5-flash"
+    if api_key:
+        try:
+            genai.configure(api_key=api_key.strip())
+            # APIキーを使って、現在利用可能なモデルの一覧を取得
+            models_info = genai.list_models()
+            available_models = [m.name.replace("models/", "") for m in models_info if 'generateContent' in m.supported_generation_methods]
+            
+            if available_models:
+                st.markdown("---")
+                st.write("🧠 AIモデル（エラーが出たらここを変更！）")
+                
+                # 安定している「1.5-pro」系があればそれを初期設定にする
+                default_idx = 0
+                for i, m_name in enumerate(available_models):
+                    if "1.5-pro" in m_name:
+                        default_idx = i
+                        break
+                        
+                selected_model = st.selectbox("現在使用中の脳みそ", available_models, index=default_idx)
+        except Exception:
+            pass
+            
     st.markdown("---")
     level = st.selectbox(
         "📈 会話のレベルを選択", 
@@ -101,8 +125,8 @@ if api_key:
     
     if "chat_session" not in st.session_state or start_button:
         try:
-            # ★安定版のAI「gemini-2.0-flash」に変更しました★
-            model = genai.GenerativeModel('gemini-2.0-flash', system_instruction=system_instruction)
+            # ★選択されたモデルを自動でセット★
+            model = genai.GenerativeModel(selected_model, system_instruction=system_instruction)
             st.session_state.chat_session = model.start_chat(history=[])
             st.session_state.messages = []
             
@@ -157,8 +181,7 @@ if api_key:
                     mime_type = audio_value.type if hasattr(audio_value, 'type') else "audio/wav"
                     audio_data = {"mime_type": mime_type, "data": audio_bytes}
                     
-                    # ★音声聞き取りも安定版のAI「gemini-2.0-flash」に変更しました★
-                    transcriber = genai.GenerativeModel('gemini-2.0-flash')
+                    transcriber = genai.GenerativeModel(selected_model)
                     st.session_state.api_calls.append(time.time())
                     res = transcriber.generate_content([audio_data, "聞こえた英語をそのまま文字起こししてください。文字のみを出力してください。"])
                     
@@ -170,7 +193,9 @@ if api_key:
                     if "429" in str(e):
                         match = re.search(r'retry in ([\d\.]+)s', str(e))
                         wait_t = int(float(match.group(1))) + 1 if match else 30
-                        st.error(f"⚠️ 少し早口すぎたようです！無料枠の休憩タイムです。あと {wait_t}秒 ほど経ってからもう一度送信してください☕")
+                        st.error(f"⚠️ 無料枠の休憩タイムです。あと {wait_t}秒 ほど経ってからもう一度送信してください☕")
+                    elif "400" in str(e) or "not supported" in str(e).lower():
+                        st.error(f"⚠️ このモデルは音声入力に対応していません。左側のメニューから別のAIモデルに変更してください。")
                     else:
                         st.error(f"AIが音声を処理できませんでした: {e}")
 
@@ -202,7 +227,7 @@ if api_key:
                 if "429" in str(e):
                     match = re.search(r'retry in ([\d\.]+)s', str(e))
                     wait_t = int(float(match.group(1))) + 1 if match else 30
-                    st.error(f"⚠️ 少し早口すぎたようです！無料枠の休憩タイムです。あと {wait_t}秒 ほど経ってからもう一度送信してください☕")
+                    st.error(f"⚠️ 無料枠の休憩タイムです。あと {wait_t}秒 ほど経ってからもう一度送信してください☕")
                 else:
                     st.error(f"返答の作成中にエラーが発生しました: {e}")
 else:
