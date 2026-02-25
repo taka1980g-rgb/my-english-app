@@ -7,15 +7,16 @@ import time
 import re
 
 # ==========================================================
-# 🔑 ここに取得したAPIキーを貼り付けてください（" " の中にコピペ）
+# 🔑 StreamlitのSecrets（金庫）からAPIキーを自動で読み込む
 # ==========================================================
-MY_API_KEY = "AIzaSyDJeJIYgFQ9pE6uMTjE1U5D2STMTX5uPjs"
+try:
+    MY_API_KEY = st.secrets["GEMINI_API_KEY"]
+except Exception:
+    MY_API_KEY = ""
+    st.error("⚠️ StreamlitのSettingsから「Secrets」を開き、GEMINI_API_KEY を設定してください！")
+    st.stop()
 
 st.title("My English Roleplay AI 🗣️")
-
-if MY_API_KEY == "ここにAPIキーを貼り付けてください" or MY_API_KEY == "":
-    st.error("⚠️ プログラムの12行目にある「MY_API_KEY」に、実際のAPIキーを貼り付けて保存してください！")
-    st.stop()
 
 if "api_calls" not in st.session_state:
     st.session_state.api_calls = []
@@ -123,7 +124,6 @@ doc_text = ""
 if uploaded_file is not None:
     doc_text = extract_text(uploaded_file)
 
-# === AIへの指示をさらに強力に修正：役割の混同を完全に防ぐ ===
 system_instruction = f"""
 あなたは英会話のロールプレイング相手です。
 
