@@ -38,19 +38,16 @@ st.title("My English Roleplay AI 🗣️")
 with st.sidebar:
     st.header("⚙️ 設定メニュー")
     
-    # ★改善：無駄な通信を削り、モデルを2つに固定化★
     st.write("🧠 AIモデル")
     model_options = {
         "賢い・やや遅い": "gemini-2.5-flash",
         "最速・低コスト": "gemini-2.5-flash-lite"
     }
-    # 画面に表示する名前を選ばせる（初期値は0番目のFlash）
     selected_display_name = st.selectbox(
         "使用中の脳みそ", 
         list(model_options.keys()), 
         index=0
     )
-    # 選ばれた表示名から、裏側で使う本当のモデル名を引っ張り出す
     selected_model = model_options[selected_display_name]
             
     st.markdown("---")
@@ -91,9 +88,13 @@ with st.sidebar:
     st.markdown("---")
     situation = st.text_area(
         "🎬 シチュエーション", 
-        "例: 小学校の授業",
+        "例: 私の発表が終わった後の質疑応答の時間です。少し意地悪な質問をしてください。",
         height=100
     )
+
+    # ★追加：練習したい単語・テーマの指定欄
+    st.markdown("---")
+    focus_words = st.text_input("🎯 練習したい単語・テーマ (任意)", placeholder="例: 医療系頻出単語")
     
     st.markdown("---")
     st.write("📁 資料を読み込ませる")
@@ -117,6 +118,7 @@ doc_text = ""
 if uploaded_file is not None:
     doc_text = extract_text(uploaded_file)
 
+# ★改善：AIへの指示に「リピート練習」と「テーマ指定」のルールを追加
 system_instruction = f"""
 あなたは英会話のロールプレイング相手です。
 
@@ -124,6 +126,7 @@ system_instruction = f"""
 【ユーザーの名前】: {user_name}
 【設定レベル】: {level}
 【シチュエーション】: {situation}
+【重点テーマ・単語】: {focus_words}
 【参考資料】: {doc_text}
 
 厳密なルール:
@@ -131,12 +134,18 @@ system_instruction = f"""
 2. ユーザーの【設定レベル】に合わせて英単語の難易度や文章の長さを調整してください。
 3. 通信量削減のため、感情表現や前置きは一切不要です。客観的かつ極めて簡潔に出力してください。
 4. フィードバックは、必ずMarkdown形式の箇条書き（- ）を使用し、各項目の後には必ず改行を入れて、1行ずつ独立させて表示してください。横に繋げて書くのは厳禁です。
-5. 必ず以下の「指定フォーマット」で出力してください。
+5. 【重点テーマ・単語】が入力されている場合、そのテーマの単語をあなたの質問に含め、ユーザーにも回答で使うよう英語で促してください。
+6. ユーザーの回答に応じて、以下の「指定フォーマット」のいずれかで出力してください。
 
+▼ パターンA：ユーザーの英語にミスがある、または不自然な場合（リピート練習）
 [フィードバック]
-- （文法チェックや指摘事項1）
-- （文法チェックや指摘事項2）
+- （日本語でミスの指摘と、より自然な表現の解説）
+[リピート練習]
+（ユーザーがそのまま復唱するための、正しい自然な英語のセリフのみ。新しい質問はしないこと）
 
+▼ パターンB：ユーザーの英語が自然な場合、または会話の最初（通常進行）
+[フィードバック]
+- （日本語で良かった点の評価）
 [英語の質問]
 （【あなたの役柄】としてユーザーに投げかける英語のセリフや質問文のみ）
 """
@@ -172,11 +181,17 @@ if "chat_session" in st.session_state:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
                 
-                if message["role"] == "assistant" and "[英語の質問]" in message["content"]:
-                    english_part = message["content"].split("[英語の質問]")[1].strip()
-                    if english_part:
+                # ★変更：[英語の質問] か [リピート練習] のどちらかを読み上げる
+                if message["role"] == "assistant":
+                    play_text = ""
+                    if "[英語の質問]" in message["content"]:
+                        play_text = message["content"].split("[英語の質問]")[1].strip()
+                    elif "[リピート練習]" in message["content"]:
+                        play_text = message["content"].split("[リピート練習]")[1].strip()
+                        
+                    if play_text:
                         try:
-                            tts = gTTS(text=english_part, lang='en')
+                            tts = gTTS(text=play_text, lang='en')
                             fp = io.BytesIO()
                             tts.write_to_fp(fp)
                             fp.seek(0)
@@ -191,65 +206,94 @@ if "chat_session" in st.session_state:
                             pass
 
     st.markdown("---")
-    st.write("🗣️ **あなたのターン（わからない時はギブアップもOK！）**")
 
     prompt = None
     display_prompt = None
+    
+    # ★追加：直前のAIのメッセージを見て、練習モードかどうかを判断する
+    last_msg = st.session_state.messages[-1] if len(st.session_state.messages) > 0 else None
+    is_practice = False
+    if last_msg and last_msg["role"] == "assistant" and "[リピート練習]" in last_msg["content"]:
+        is_practice = True
 
-    if st.button("🆘 ギブアップ（今の質問の解説と回答例を見て次へ）"):
-        prompt = """
-        今の質問の意図がわかりません。通信量削減のため、無駄な前置きは一切省き、以下の構成で極めて簡潔に出力してください。必ず各項目のあとに改行を入れ、箇条書きが横に繋がらないようにしてください。その後、会話を続けるための【新しい別の質問】を英語で1つ投げかけてください。フォーマットは必ず [フィードバック] と [英語の質問] を守ってください。
+    if is_practice:
+        # ＝＝＝ 🔄 リピート練習モードの画面 ＝＝＝
+        st.info("🔄 **リピート練習モード**：上のお手本を聞いて、正しく発音できるかマイクで確認しましょう。満足したら「次へ進む」を押してください。")
         
-        [フィードバック]
-        - 直前の質問の英語と日本語訳
-        - 質問の意図（1文で）
-        - 回答例（英語と日本語、2パターン程度）
-        """
-        display_prompt = "（🆘 ギブアップして、質問の解説と回答例をリクエストしました）"
-
-    audio_value = st.audio_input("マイクを押して録音開始 / 停止")
-
-    if audio_value is not None:
-        audio_bytes = audio_value.getvalue()
-        if "last_audio_bytes" not in st.session_state or st.session_state.last_audio_bytes != audio_bytes:
-            st.session_state.last_audio_bytes = audio_bytes
-            with st.spinner("音声を文字に変換しています..."):
-                try:
-                    mime_type = audio_value.type if hasattr(audio_value, 'type') else "audio/wav"
-                    audio_data = {"mime_type": mime_type, "data": audio_bytes}
-                    
-                    transcriber = genai.GenerativeModel(selected_model)
-                    res = transcriber.generate_content([audio_data, "聞こえた英語をそのまま文字起こししてください。文字のみを出力してください。"])
-                    
-                    if res.parts:
-                        prompt = res.text.strip()
-                        display_prompt = prompt
-                    else:
-                        st.warning("音声から文字を抽出できませんでした。")
-                except Exception as e:
-                    st.error("エラー: もう少しゆっくり、はっきりと話してみてください。")
-
-    st.markdown("---")
-    st.write("💡 **お助け翻訳（言いたいことが英語で出てこない時）**")
-    with st.form("translation_form", clear_on_submit=False):
-        col1, col2 = st.columns([4, 1])
-        with col1:
-            jp_text = st.text_input("日本語で入力:", label_visibility="collapsed", placeholder="例: もう一度ゆっくり言ってください")
-        with col2:
-            trans_btn = st.form_submit_button("英訳する🔄")
+        practice_audio = st.audio_input("発音チェック（録音して文字起こし）")
+        
+        if practice_audio is not None:
+            audio_bytes = practice_audio.getvalue()
+            if "last_practice_audio" not in st.session_state or st.session_state.last_practice_audio != audio_bytes:
+                st.session_state.last_practice_audio = audio_bytes
+                with st.spinner("文字起こし中..."):
+                    try:
+                        mime_type = practice_audio.type if hasattr(practice_audio, 'type') else "audio/wav"
+                        audio_data = {"mime_type": mime_type, "data": audio_bytes}
+                        transcriber = genai.GenerativeModel(selected_model)
+                        res = transcriber.generate_content([audio_data, "聞こえた英語をそのまま文字起こししてください。文字のみを出力してください。"])
+                        
+                        if res.parts:
+                            st.success(f"🎤 あなたの発音: **{res.text.strip()}**")
+                        else:
+                            st.warning("音声から文字を抽出できませんでした。")
+                    except Exception as e:
+                        st.error("エラー: もう少しゆっくり、はっきりと話してみてください。")
+        
+        # 満足したら次に進むボタン
+        if st.button("▶️ 満足したので次へ進む（会話を再開）", type="primary", use_container_width=True):
+            prompt = "（リピート練習を完了しました。先ほどの続きから、会話を再開するための新しい質問を英語でしてください。）"
+            display_prompt = "（✅ リピート練習を完了し、次へ進みました）"
             
-    if trans_btn and jp_text:
-        with st.spinner("AIが英訳を考えています..."):
-            try:
-                # 翻訳専用にAIを単発で呼び出す（本筋の会話履歴には影響させません）
-                translator = genai.GenerativeModel(selected_model)
-                trans_prompt = f"以下の日本語を、英会話のセリフとして自然な英語に翻訳してください。出力は英語のセリフのみとし、解説や前置きは一切不要です。\n\n日本語: {jp_text}"
-                trans_res = translator.generate_content(trans_prompt)
-                
-                st.success(f"✨ こんな風に言ってみましょう！\n\n### {trans_res.text.strip()}\n\n👆 上のマイクボタンを押して、声に出して読んでみてください。")
-            except Exception as e:
-                st.error("翻訳中にエラーが発生しました。")
+    else:
+        # ＝＝＝ 🗣️ 通常モードの画面（元のコードそのまま） ＝＝＝
+        st.write("🗣️ **あなたのターン（わからない時はギブアップもOK！）**")
 
+        if st.button("🆘 ギブアップ（今の質問の解説と回答例を見て次へ）"):
+            prompt = """
+            今の質問の意図がわかりません。通信量削減のため、無駄な前置きは一切省き、以下の構成で極めて簡潔に出力してください。必ず各項目のあとに改行を入れ、箇条書きが横に繋がらないようにしてください。その後、会話を続けるための【新しい別の質問】を英語で1つ投げかけてください。フォーマットは必ず [フィードバック] と [英語の質問] を守ってください。
+            
+            [フィードバック]
+            - 直前の質問の英語と日本語訳
+            - 質問の意図（1文で）
+            - 回答例（英語と日本語、2パターン程度）
+            """
+            display_prompt = "（🆘 ギブアップして、質問の解説と回答例をリクエストしました）"
+
+        audio_value = st.audio_input("マイクを押して録音開始 / 停止")
+
+        if audio_value is not None:
+            audio_bytes = audio_value.getvalue()
+            if "last_audio_bytes" not in st.session_state or st.session_state.last_audio_bytes != audio_bytes:
+                st.session_state.last_audio_bytes = audio_bytes
+                with st.spinner("音声を文字に変換しています..."):
+                    try:
+                        mime_type = audio_value.type if hasattr(audio_value, 'type') else "audio/wav"
+                        audio_data = {"mime_type": mime_type, "data": audio_bytes}
+                        
+                        transcriber = genai.GenerativeModel(selected_model)
+                        res = transcriber.generate_content([audio_data, "聞こえた英語をそのまま文字起こししてください。文字のみを出力してください。"])
+                        
+                        if res.parts:
+                            prompt = res.text.strip()
+                            display_prompt = prompt
+                        else:
+                            st.warning("音声から文字を抽出できませんでした。")
+                    except Exception as e:
+                        st.error("エラー: もう少しゆっくり、はっきりと話してみてください。")
+
+        with st.form("text_input_form", clear_on_submit=True):
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                text_prompt = st.text_input("文字で入力する場合:", label_visibility="collapsed", placeholder="英語で入力...")
+            with col2:
+                submit_btn = st.form_submit_button("送信📤")
+                
+            if submit_btn and text_prompt:
+                prompt = text_prompt
+                display_prompt = text_prompt
+
+    # ＝＝＝ プロンプト送信処理（モード共通） ＝＝＝
     if prompt and display_prompt:
         st.session_state.messages.append({"role": "user", "content": display_prompt})
         
