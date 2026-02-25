@@ -37,7 +37,6 @@ with st.sidebar:
     
     start_button = st.button("▶️ この設定で会話をスタート")
     
-    # 新機能：会話終了ボタン
     st.markdown("---")
     st.header("🛑 会話の終了")
     end_button = st.button("会話を終了して最終評価をもらう")
@@ -136,12 +135,20 @@ if api_key:
             st.session_state.last_audio_bytes = audio_bytes
             with st.spinner("音声を文字に変換しています..."):
                 try:
-                    audio_data = {"mime_type": "audio/wav", "data": audio_bytes}
+                    # ★修正箇所：録音データの種類（MIMEタイプ）を自動判別してAIに渡す
+                    mime_type = audio_value.type if hasattr(audio_value, 'type') else "audio/wav"
+                    audio_data = {"mime_type": mime_type, "data": audio_bytes}
+                    
                     transcriber = genai.GenerativeModel('gemini-2.5-flash')
                     res = transcriber.generate_content([audio_data, "聞こえた英語をそのまま文字起こししてください。文字のみを出力してください。"])
-                    prompt = res.text.strip()
+                    
+                    if res.parts:
+                        prompt = res.text.strip()
+                    else:
+                        st.warning("音声から文字を抽出できませんでした。")
                 except Exception as e:
-                    st.error("音声の読み取りに失敗しました。もう少し大きな声で話してみてください。")
+                    # ★ここにAIからの本当のエラーメッセージが表示されます
+                    st.error(f"【エラー詳細】AIが音声を処理できませんでした: {e}")
 
     text_prompt = st.chat_input("または、キーボードで文字を入力...")
     if text_prompt:
