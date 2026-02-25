@@ -30,27 +30,28 @@ except Exception:
     st.error("⚠️ StreamlitのSettingsから「Secrets」を開き、GEMINI_API_KEY を設定してください！")
     st.stop()
 
+# APIキーをセット
+genai.configure(api_key=MY_API_KEY.strip())
+
 st.title("My English Roleplay AI 🗣️")
 
 with st.sidebar:
     st.header("⚙️ 設定メニュー")
     
-    selected_model = "gemini-1.5-flash"
-    try:
-        genai.configure(api_key=MY_API_KEY.strip())
-        models_info = genai.list_models()
-        available_models = [m.name.replace("models/", "") for m in models_info if 'generateContent' in m.supported_generation_methods]
-        
-        if available_models:
-            st.write("🧠 AIモデル")
-            default_idx = 0
-            for i, m_name in enumerate(available_models):
-                if "1.5-pro" in m_name:
-                    default_idx = i
-                    break
-            selected_model = st.selectbox("使用中の脳みそ", available_models, index=default_idx)
-    except Exception:
-        pass
+    # ★改善：無駄な通信を削り、モデルを2つに固定化★
+    st.write("🧠 AIモデル")
+    model_options = {
+        "Gemini 2.5 Flash (高速・汎用)": "gemini-2.5-flash",
+        "Gemini 2.5 Flash-Lite (最速・低コスト)": "gemini-2.5-flash-lite"
+    }
+    # 画面に表示する名前を選ばせる（初期値は0番目のFlash）
+    selected_display_name = st.selectbox(
+        "使用中の脳みそ", 
+        list(model_options.keys()), 
+        index=0
+    )
+    # 選ばれた表示名から、裏側で使う本当のモデル名を引っ張り出す
+    selected_model = model_options[selected_display_name]
             
     st.markdown("---")
     level = st.selectbox(
@@ -143,7 +144,6 @@ system_instruction = f"""
 if "last_played_msg_idx" not in st.session_state:
     st.session_state.last_played_msg_idx = -1
 
-# ★改善：スタートボタンが押された時「だけ」会話を初期化するように変更★
 if start_button:
     try:
         model = genai.GenerativeModel(selected_model, system_instruction=system_instruction)
@@ -166,7 +166,6 @@ if end_button and "chat_session" in st.session_state:
         except Exception as e:
             st.error("評価の作成中にエラーが発生しました。")
 
-# ★改善：会話がスタートしている時だけチャット画面を表示する★
 if "chat_session" in st.session_state:
     for i, message in enumerate(st.session_state.messages):
         if "role" in message and "content" in message:
@@ -252,5 +251,4 @@ if "chat_session" in st.session_state:
             except Exception as e:
                 st.error("返答の作成中にエラーが発生しました。")
 else:
-    # ★追加：まだスタートしていない時の待機画面★
     st.info("👈 左側のメニューで役割やシチュエーションを設定し、「▶️ 会話をリセットしてスタート」ボタンを押して開始してください。")
