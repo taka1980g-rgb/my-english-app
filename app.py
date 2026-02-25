@@ -242,31 +242,6 @@ if "chat_session" in st.session_state:
             
     else:
         # ＝＝＝ 🗣️ 通常モードの画面 ＝＝＝
-        st.write("🗣️ **あなたのターン（わからない時は下のお助けツールも使えます）**")
-
-        # 【メインアクション】マイク入力
-        audio_value = st.audio_input("マイクを押して録音開始 / 停止")
-
-        if audio_value is not None:
-            audio_bytes = audio_value.getvalue()
-            if "last_audio_bytes" not in st.session_state or st.session_state.last_audio_bytes != audio_bytes:
-                st.session_state.last_audio_bytes = audio_bytes
-                with st.spinner("音声を文字に変換しています..."):
-                    try:
-                        mime_type = audio_value.type if hasattr(audio_value, 'type') else "audio/wav"
-                        audio_data = {"mime_type": mime_type, "data": audio_bytes}
-                        transcriber = genai.GenerativeModel(selected_model)
-                        res = transcriber.generate_content([audio_data, "聞こえた英語をそのまま文字起こししてください。文字のみを出力してください。"])
-                        
-                        if res.parts:
-                            prompt = res.text.strip()
-                            display_prompt = prompt
-                        else:
-                            st.warning("音声から文字を抽出できませんでした。")
-                    except Exception as e:
-                        st.error("エラー: もう少しゆっくり、はっきりと話してみてください。")
-
-        st.markdown("---")
         st.write("🛠️ **お助けツール（※これらを使っても会話は先に進みません）**")
 
         # ① 直前の質問の日本語訳を見る機能
@@ -300,7 +275,7 @@ if "chat_session" in st.session_state:
                 except Exception as e:
                     st.error("検索に失敗しました。")
 
-        # ③ ご指定いただいた「お助け翻訳」コード（テキスト入力フォームを置き換え）
+        # ③ お助け翻訳機能
         st.write("💡 **お助け翻訳（言いたいことが英語で出てこない時）**")
         with st.form("translation_form", clear_on_submit=False):
             col1, col2 = st.columns([4, 1])
@@ -312,27 +287,56 @@ if "chat_session" in st.session_state:
         if trans_btn and jp_text:
             with st.spinner("AIが英訳を考えています..."):
                 try:
-                    # 翻訳専用にAIを単発で呼び出す（本筋の会話履歴には影響させません）
                     translator = genai.GenerativeModel(selected_model)
                     trans_prompt = f"以下の日本語を、英会話のセリフとして自然な英語に翻訳してください。出力は英語のセリフのみとし、解説や前置きは一切不要です。\n\n日本語: {jp_text}"
                     trans_res = translator.generate_content(trans_prompt)
                     
-                    st.success(f"✨ こんな風に言ってみましょう！\n\n### {trans_res.text.strip()}\n\n👆 上のマイクボタンを押して、声に出して読んでみてください。")
+                    st.success(f"✨ こんな風に言ってみましょう！\n\n### {trans_res.text.strip()}\n\n👆 すぐ下のマイクボタンを押して、声に出して読んでみてください。")
                 except Exception as e:
                     st.error("翻訳中にエラーが発生しました。")
 
         st.markdown("---")
-        # 究極の救済：ギブアップボタン（これだけは押すと会話が次に進む）
-        if st.button("🆘 ギブアップ（今の質問の解説と回答例を見て次へ）"):
+        st.write("🗣️ **あなたのターン（回答を録音して送信）**")
+
+        # 【メインアクション】★マイク入力をここに移動しました★
+        audio_value = st.audio_input("マイクを押して回答を録音・送信")
+
+        if audio_value is not None:
+            audio_bytes = audio_value.getvalue()
+            if "last_audio_bytes" not in st.session_state or st.session_state.last_audio_bytes != audio_bytes:
+                st.session_state.last_audio_bytes = audio_bytes
+                with st.spinner("音声を文字に変換しています..."):
+                    try:
+                        mime_type = audio_value.type if hasattr(audio_value, 'type') else "audio/wav"
+                        audio_data = {"mime_type": mime_type, "data": audio_bytes}
+                        transcriber = genai.GenerativeModel(selected_model)
+                        res = transcriber.generate_content([audio_data, "聞こえた英語をそのまま文字起こししてください。文字のみを出力してください。"])
+                        
+                        if res.parts:
+                            prompt = res.text.strip()
+                            display_prompt = prompt
+                        else:
+                            st.warning("音声から文字を抽出できませんでした。")
+                    except Exception as e:
+                        st.error("エラー: もう少しゆっくり、はっきりと話してみてください。")
+
+        st.markdown("---")
+        st.write("🆘 **どうしても答えられない時**")
+        
+        # 究極の救済：★ギブアップ時のプロンプトを書き換え、AIに「練習モード」へ移行させるようにしました★
+        if st.button("ギブアップ（解説と回答例を見て、リピート練習へ進む）"):
             prompt = """
-            今の質問の意図がわかりません。通信量削減のため、無駄な前置きは一切省き、以下の構成で極めて簡潔に出力してください。必ず各項目のあとに改行を入れ、箇条書きが横に繋がらないようにしてください。その後、会話を続けるための【新しい別の質問】を英語で1つ投げかけてください。フォーマットは必ず [フィードバック] と [英語の質問] を守ってください。
+            今の質問の意図がわかりません。通信量削減のため、無駄な前置きは一切省き、以下の構成で極めて簡潔に出力してください。今回は【新しい質問は行わず】、私がそのまま復唱できる回答例を提示してください。
             
             [フィードバック]
             - 直前の質問の英語と日本語訳
             - 質問の意図（1文で）
-            - 回答例（英語と日本語、2パターン程度）
+            - この状況での自然な回答例の解説（日本語）
+            
+            [リピート練習]
+            （私がそのまま復唱して答えるための、英語の回答例のセリフのみ。複数の場合は一番標準的なものを1つだけ。絶対に新しい質問はしないこと）
             """
-            display_prompt = "（🆘 ギブアップして、質問の解説と回答例をリクエストしました）"
+            display_prompt = "（🆘 ギブアップして、解説と回答例をリクエストしました）"
 
     # ＝＝＝ プロンプト送信処理（モード共通） ＝＝＝
     if prompt and display_prompt:
