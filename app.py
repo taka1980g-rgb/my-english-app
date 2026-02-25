@@ -22,9 +22,10 @@ with st.sidebar:
 
 # APIキーが入力されたら動くメインのプログラム
 if api_key:
-    genai.configure(api_key=api_key)
+    # ★修正1: コピーした時の見えない空白（スペース）を自動で削除する★
+    clean_api_key = api_key.strip()
+    genai.configure(api_key=clean_api_key)
     
-    # AIの脳みそ（ルール）を設定
     system_instruction = f"""
     あなたは優秀なネイティブ英語教師であり、英会話のロールプレイング相手です。
     現在のシチュエーションと設定資料は以下の通りです。
@@ -36,33 +37,37 @@ if api_key:
     3. フィードバックが終わったら、会話を続けるための次の質問を英語で1つだけ投げかけてください。
     """
     
-    # 会話の履歴を保存する準備
     if "chat_session" not in st.session_state or start_button:
-        # ★ここを修正しました（-latest を追加）★
-        model = genai.GenerativeModel('gemini-1.5-flash-latest', system_instruction=system_instruction)
-        st.session_state.chat_session = model.start_chat(history=[])
-        st.session_state.messages = []
-        
-        # 最初のAIからの挨拶
-        response = st.session_state.chat_session.send_message("シチュエーションを開始して、最初の質問を英語でしてください。")
-        st.session_state.messages.append({"role": "assistant", "content": response.text})
+        try:
+            # ★修正2: 最も安定しているモデル名で呼び出す★
+            model = genai.GenerativeModel('gemini-1.5-flash', system_instruction=system_instruction)
+            st.session_state.chat_session = model.start_chat(history=[])
+            st.session_state.messages = []
+            
+            response = st.session_state.chat_session.send_message("シチュエーションを開始して、最初の質問を英語でしてください。")
+            st.session_state.messages.append({"role": "assistant", "content": response.text})
+        except Exception as e:
+            # エラーが起きたら画面に詳細を表示する
+            st.error(f"AIの準備中にエラーが発生しました: {e}")
 
     # これまでの会話履歴を画面に表示
     for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+        if "role" in message and "content" in message:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
 
     # ユーザーの入力欄と送信した時の動き
     if prompt := st.chat_input("英語で返答を入力してください..."):
-        # ユーザーの入力を画面に表示
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # AIにユーザーの入力を送って返答をもらう
         with st.chat_message("assistant"):
-            response = st.session_state.chat_session.send_message(prompt)
-            st.markdown(response.text)
-            st.session_state.messages.append({"role": "assistant", "content": response.text})
+            try:
+                response = st.session_state.chat_session.send_message(prompt)
+                st.markdown(response.text)
+                st.session_state.messages.append({"role": "assistant", "content": response.text})
+            except Exception as e:
+                st.error(f"返答の作成中にエラーが発生しました: {e}")
 else:
     st.info("👈 左側のメニューにAPIキーを入力すると、AIとの会話画面が表示されます。")
