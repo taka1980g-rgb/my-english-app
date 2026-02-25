@@ -13,7 +13,6 @@ MY_API_KEY = "AIzaSyDJeJIYgFQ9pE6uMTjE1U5D2STMTX5uPjs"
 
 st.title("My English Roleplay AI 🗣️")
 
-# APIキーが入力されていない場合の警告
 if MY_API_KEY == "ここにAPIキーを貼り付けてください" or MY_API_KEY == "":
     st.error("⚠️ プログラムの12行目にある「MY_API_KEY」に、実際のAPIキーを貼り付けて保存してください！")
     st.stop()
@@ -60,10 +59,17 @@ with st.sidebar:
         ]
     )
     
+    # === 新機能：質問者の役割を追加 ===
+    st.markdown("---")
+    questioner = st.text_input(
+        "👤 質問者（AIの役割）", 
+        "例: 小学校の先生、学会発表の場での聴衆 など"
+    )
+    
     st.markdown("---")
     situation = st.text_area(
         "🎬 シチュエーション", 
-        "例: 私は海外旅行中の観光客です。空港で入国審査を受けています。審査官として質問してください。",
+        "例: 私の発表が終わった後の質疑応答の時間です。少し意地悪な質問をしてください。",
         height=100
     )
     
@@ -101,22 +107,25 @@ doc_text = ""
 if uploaded_file is not None:
     doc_text = extract_text(uploaded_file)
 
+# === AIへの指示を強化：「質問者」になりきるよう設定 ===
 system_instruction = f"""
 あなたは優秀なネイティブ英語教師であり、英会話のロールプレイング相手です。
 
 【設定レベル】: {level}
+【あなたの役割（質問者）】: {questioner}
 【シチュエーション】: {situation}
 【参考資料】: {doc_text}
 
 ルール:
-1. ユーザーの【設定レベル】に合わせて、使用する英単語の難易度や文章の長さを厳密に調整してください。
-2. ユーザーが英語で返答したら、文法チェックや自然な表現を日本語でフィードバックしてください。
-3. 必ず以下の「指定フォーマット」で出力してください。
+1. あなたは指定された【あなたの役割（質問者）】に完全になりきり、【シチュエーション】に沿ってユーザーと会話してください。
+2. ユーザーの【設定レベル】に合わせて、使用する英単語の難易度や文章の長さを厳密に調整してください。
+3. ユーザーが英語で返答したら、文法チェックや自然な表現を日本語でフィードバックしてください。
+4. 必ず以下の「指定フォーマット」で出力してください。
 
 [フィードバック]
 （ここに日本語での文法チェックや解説）
 [英語の質問]
-（ここに次にユーザーに投げかける英語の質問文）
+（ここに【あなたの役割（質問者）】として、次にユーザーに投げかける英語の質問文）
 """
 
 if "chat_session" not in st.session_state or start_button:
@@ -142,7 +151,6 @@ if end_button and "chat_session" in st.session_state:
         except Exception as e:
             st.error("評価の作成中にエラーが発生しました。")
 
-# === チャット履歴の表示 ===
 for message in st.session_state.messages:
     if "role" in message and "content" in message:
         with st.chat_message(message["role"]):
@@ -160,11 +168,9 @@ for message in st.session_state.messages:
                     except Exception:
                         pass
 
-# === ここから：マイクと文字入力を「AIのすぐ下」にまとめて表示 ===
 st.markdown("---")
 st.write("🗣️ **あなたのターン（音声か文字で返答してください）**")
 
-# 音声入力（マイク）
 prompt = None
 audio_value = st.audio_input("マイクを押して録音開始 / 停止")
 
@@ -188,7 +194,6 @@ if audio_value is not None:
             except Exception as e:
                 st.error("エラー: もう少しゆっくり、はっきりと話してみてください。")
 
-# 文字入力（テキスト）
 with st.form("text_input_form", clear_on_submit=True):
     col1, col2 = st.columns([4, 1])
     with col1:
@@ -199,7 +204,6 @@ with st.form("text_input_form", clear_on_submit=True):
     if submit_btn and text_prompt:
         prompt = text_prompt
 
-# 送信処理
 if prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
     
@@ -208,7 +212,7 @@ if prompt:
             st.session_state.api_calls.append(time.time())
             response = st.session_state.chat_session.send_message(prompt)
             st.session_state.messages.append({"role": "assistant", "content": response.text})
-            st.rerun() # 画面を更新して新しいメッセージを表示
+            st.rerun() 
         except Exception as e:
             if "429" in str(e):
                 st.error("⚠️ 無料枠の休憩タイムです。少し待ってから送信してください☕")
