@@ -22,7 +22,7 @@ with st.sidebar:
 
 # APIキーが入力されたら動くメインのプログラム
 if api_key:
-    # ★修正1: コピーした時の見えない空白（スペース）を自動で削除する★
+    # コピーした時の見えない空白（スペース）を自動で削除する
     clean_api_key = api_key.strip()
     genai.configure(api_key=clean_api_key)
     
@@ -39,15 +39,14 @@ if api_key:
     
     if "chat_session" not in st.session_state or start_button:
         try:
-            # ★修正2: 最も安定しているモデル名で呼び出す★
-            model = genai.GenerativeModel('gemini-1.5-flash', system_instruction=system_instruction)
+            # ★ここを現在稼働している最新のAIモデル名「gemini-2.5-flash」に修正しました★
+            model = genai.GenerativeModel('gemini-2.5-flash', system_instruction=system_instruction)
             st.session_state.chat_session = model.start_chat(history=[])
             st.session_state.messages = []
             
             response = st.session_state.chat_session.send_message("シチュエーションを開始して、最初の質問を英語でしてください。")
             st.session_state.messages.append({"role": "assistant", "content": response.text})
         except Exception as e:
-            # エラーが起きたら画面に詳細を表示する
             st.error(f"AIの準備中にエラーが発生しました: {e}")
 
     # これまでの会話履歴を画面に表示
