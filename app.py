@@ -83,7 +83,7 @@ with st.sidebar:
     def_uname = loaded_settings.get("user_name", "")
     def_pq = loaded_settings.get("preset_questioner", "同年代の友達")
     def_fq = loaded_settings.get("free_questioner", "")
-    def_sit = loaded_settings.get("situation", "例: 私の発表が終わった後の質疑応答の時間です。少し意地悪な質問をしてください。")
+    def_sit = loaded_settings.get("situation", "")
     def_fw = loaded_settings.get("focus_words", "")
     def_doc = loaded_settings.get("doc_text", "")
 
