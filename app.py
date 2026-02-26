@@ -3,18 +3,17 @@ import google.generativeai as genai
 from gtts import gTTS
 import PyPDF2
 import io
+import json  # 設定の保存・読み込みのために追加
 
 # === 🎨 画面デザインのカスタマイズ（CSS） ===
 st.markdown("""
     <style>
-    /* お助けツール全体の枠組み（コンテナ）の背景色を「薄い黄色」にして目立たせる */
     div[data-testid="stVerticalBlockBorderWrapper"] {
-        background-color: #FFFDE7 !important; /* 薄い黄色 */
-        border: 2px solid #FFF59D !important; /* 少し濃い黄色の枠線 */
+        background-color: #FFFDE7 !important;
+        border: 2px solid #FFF59D !important;
         border-radius: 10px;
         padding: 15px;
     }
-    /* 内部の入力フォーム（検索窓など）は白くして文字を見やすくする */
     div[data-testid="stForm"] {
         background-color: #FFFFFF !important;
         border: 1px solid #E0E4E8 !important;
@@ -49,11 +48,11 @@ except Exception:
     st.error("⚠️ StreamlitのSettingsから「Secrets」を開き、GEMINI_API_KEY を設定してください！")
     st.stop()
 
-# APIキーをセット
 genai.configure(api_key=MY_API_KEY.strip())
 
 st.title("My English Roleplay AI 🗣️")
 
+# === ⚙️ サイドバーの設定と保存・読み込み ===
 with st.sidebar:
     st.header("⚙️ 設定メニュー")
     
@@ -62,79 +61,115 @@ with st.sidebar:
         "賢い・やや遅い": "gemini-2.5-flash",
         "最速・低コスト": "gemini-2.5-flash-lite"
     }
-    selected_display_name = st.selectbox(
-        "使用中の脳みそ", 
-        list(model_options.keys()), 
-        index=0
-    )
+    selected_display_name = st.selectbox("使用中の脳みそ", list(model_options.keys()), index=0)
     selected_model = model_options[selected_display_name]
-            
+    
     st.markdown("---")
-    level = st.selectbox(
-        "📈 会話のレベル", 
-        [
-            "1: 超初心者（簡単な単語・短い文・ゆっくり）", 
-            "2: 初心者（日常会話の基礎）", 
-            "3: 中級者（自然な表現・標準的な速度）", 
-            "4: 上級者（ビジネスや専門的な語彙）", 
-            "5: 専門家（ネイティブレベル・複雑な議論）"
-        ]
-    )
+    
+    # 🌟 新機能：設定ファイルの読み込み
+    st.write("📂 **設定の読み込み**")
+    setting_file = st.file_uploader("保存した設定（.json）をアップロード", type=["json"])
+    
+    loaded_settings = {}
+    if setting_file is not None:
+        try:
+            loaded_settings = json.load(setting_file)
+            st.success("設定を読み込みました！")
+        except Exception:
+            st.error("ファイルの読み込みに失敗しました。")
 
-    st.markdown("---")
-    input_name = st.text_input("📛 あなたの名前（呼ばれ方）", placeholder="例: masa")
+    # 読み込んだデータがあれば初期値としてセット、なければデフォルト値
+    def_level = loaded_settings.get("level", "2: 初心者（日常会話の基礎）")
+    def_uname = loaded_settings.get("user_name", "")
+    def_pq = loaded_settings.get("preset_questioner", "同年代の友達")
+    def_fq = loaded_settings.get("free_questioner", "")
+    def_sit = loaded_settings.get("situation", "例: 私の発表が終わった後の質疑応答の時間です。少し意地悪な質問をしてください。")
+    def_fw = loaded_settings.get("focus_words", "")
+    def_doc = loaded_settings.get("doc_text", "")
+
+    # 各種設定の入力欄
+    level_list = [
+        "1: 超初心者（簡単な単語・短い文・ゆっくり）", 
+        "2: 初心者（日常会話の基礎）", 
+        "3: 中級者（自然な表現・標準的な速度）", 
+        "4: 上級者（ビジネスや専門的な語彙）", 
+        "5: 専門家（ネイティブレベル・複雑な議論）"
+    ]
+    level_idx = level_list.index(def_level) if def_level in level_list else 1
+    level = st.selectbox("📈 会話のレベル", level_list, index=level_idx)
+
+    input_name = st.text_input("📛 あなたの名前（呼ばれ方）", value=def_uname, placeholder="例: masa")
     user_name = input_name if input_name else "Anata"
     
-    st.markdown("---")
     st.write("👤 質問者（AIの役割）")
-    preset_questioner = st.selectbox(
-        "AIの役柄を選んでください",
-        [
-            "小学校の先生",
-            "同年代の友達",
-            "職場の先輩",
-            "気さくな友達",
-            "学会発表の聴衆",
-            "その他（自由入力）"
-        ]
-    )
+    pq_list = ["小学校の先生", "同年代の友達", "職場の先輩", "気さくな友達", "学会発表の聴衆", "その他（自由入力）"]
+    pq_idx = pq_list.index(def_pq) if def_pq in pq_list else 1
+    preset_questioner = st.selectbox("AIの役柄を選んでください", pq_list, index=pq_idx)
     
     if preset_questioner == "その他（自由入力）":
-        questioner = st.text_input("自由に役割を入力してください", "例: 空港の入国審査官")
+        free_questioner = st.text_input("自由に役割を入力してください", value=def_fq, placeholder="例: 空港の入国審査官")
+        questioner = free_questioner
     else:
+        free_questioner = ""
         questioner = preset_questioner
     
-    st.markdown("---")
-    situation = st.text_area(
-        "🎬 シチュエーション", 
-        "",
-        height=100
-    )
+    situation = st.text_area("🎬 シチュエーション", value=def_sit, height=100)
+    focus_words = st.text_input("🎯 練習したい単語・テーマ (任意)", value=def_fw, placeholder="例: 医療系頻出単語")
+    
+    # 資料の読み込み（設定ファイルから復元されたテキストを保持しつつ、新規アップロードも可能）
+    st.write("📁 資料を読み込ませる")
+    doc_text = def_doc
+    uploaded_file = st.file_uploader("新しい資料 (PDF/TXT) ※設定ファイル読込済なら不要", type=["pdf", "txt"])
+    
+    def extract_text(file):
+        text = ""
+        if file.name.endswith('.pdf'):
+            reader = PyPDF2.PdfReader(file)
+            for page in reader.pages:
+                text += page.extract_text() + "\n"
+        elif file.name.endswith('.txt'):
+            text = file.read().decode('utf-8')
+        return text
+
+    if uploaded_file is not None:
+        doc_text = extract_text(uploaded_file)
+        st.success("新しい資料のテキストを抽出しました！")
 
     st.markdown("---")
-    focus_words = st.text_input("🎯 練習したい単語・テーマ (任意)", placeholder="例: 医療系頻出単語")
     
-    st.markdown("---")
-    st.write("📁 資料を読み込ませる")
-    uploaded_file = st.file_uploader("PDF/TXTファイル", type=["pdf", "txt"])
-    
+    # 🌟 新機能：現在の設定を保存
+    st.write("💾 **現在の設定を保存する**")
+    current_settings = {
+        "level": level,
+        "user_name": input_name,
+        "preset_questioner": preset_questioner,
+        "free_questioner": free_questioner,
+        "situation": situation,
+        "focus_words": focus_words,
+        "doc_text": doc_text
+    }
+    json_str = json.dumps(current_settings, ensure_ascii=False, indent=2)
+    st.download_button("⬇️ 設定ファイル（.json）をダウンロード", data=json_str, file_name="english_settings.json", mime="application/json", use_container_width=True)
+
     st.markdown("---")
     start_button = st.button("▶️ 会話をリセットしてスタート", type="primary", use_container_width=True)
     end_button = st.button("🛑 会話を終了して評価をもらう", use_container_width=True)
 
-def extract_text(file):
-    text = ""
-    if file.name.endswith('.pdf'):
-        reader = PyPDF2.PdfReader(file)
-        for page in reader.pages:
-            text += page.extract_text() + "\n"
-    elif file.name.endswith('.txt'):
-        text = file.read().decode('utf-8')
-    return text
+    st.markdown("---")
+    # 🌟 新機能：今日の会話を保存（ログ生成）
+    if "messages" in st.session_state and len(st.session_state.messages) > 0:
+        log_text = "【今日の英会話記録】\n\n"
+        for msg in st.session_state.messages:
+            # システム用の裏側プロンプトは除外する
+            if msg["role"] == "user" and msg["content"].startswith("（"):
+                continue
+            
+            sender = "あなた" if msg["role"] == "user" else "AI"
+            content = msg["content"].replace("[フィードバック]", "\n[フィードバック]").replace("[英語の質問]", "\n[英語の質問]").replace("[リピート練習]", "\n[リピート練習]")
+            log_text += f"{sender}:\n{content.strip()}\n\n{'='*40}\n\n"
+            
+        st.download_button("📝 今日の会話記録を保存（.txt）", data=log_text, file_name="english_log.txt", mime="text/plain", use_container_width=True)
 
-doc_text = ""
-if uploaded_file is not None:
-    doc_text = extract_text(uploaded_file)
 
 system_instruction = f"""
 あなたは英会話のロールプレイング相手です。
@@ -185,7 +220,24 @@ if start_button:
 if end_button and "chat_session" in st.session_state:
     with st.spinner("AIが成績をまとめています..."):
         try:
-            summary_prompt = "ここまでの会話を終了します。通信量削減のため、前置きは省き、私の英語の文法、語彙力、コミュニケーション力について、良かった点と課題を各項目ごとに改行を入れた箇条書きで簡潔に総評してください。"
+            # 🌟 変更点：評価プロンプトを「褒めて伸ばす＆スコア化」に修正
+            summary_prompt = """
+            ここまでの会話を終了します。通信量削減のため、不要な前置きは省いてください。
+            学習者のモチベーションが上がるように、まずはたくさん褒めてください！
+            その後、本日の英会話の評価を以下のフォーマットで出力してください。
+
+            【本日のスコア】
+            - 文法: 〇/100点
+            - 語彙力: 〇/100点
+            - 積極性: 〇/100点
+            - 総合スコア: 〇/100点
+
+            【良かった点】
+            - （具体的に良かった点を箇条書きで褒める）
+
+            【今後の課題・アドバイス】
+            - （次に繋がるよう、優しくポジティブにアドバイス）
+            """
             response = st.session_state.chat_session.send_message(summary_prompt)
             st.session_state.messages.append({"role": "user", "content": "（会話を終了し、評価をリクエストしました）"})
             st.session_state.messages.append({"role": "assistant", "content": response.text})
@@ -281,7 +333,12 @@ if "chat_session" in st.session_state:
         # ＝＝＝ 🗣️ 通常モードの画面 ＝＝＝
         st.write("🗣️ **あなたのターン（回答を録音して送信）**")
 
-        # 【メインアクション】
+        # 🌟 新機能：今の質問をやり直すボタン（マイクの上に設置）
+        if st.button("🔄 今の質問をもう一度聞く（別の言い方で答え直したい時など）"):
+            prompt = "すみません、あなたの今の質問にもう一度別の言い方で答えたいので、全く同じ質問文をもう一度言ってください。新しい質問はしないでください。"
+            display_prompt = "（🔄 今の質問をもう一度繰り返してください）"
+
+        # 【メインアクション】マイク入力
         audio_value = st.audio_input("マイクを押して回答を録音・送信")
 
         if audio_value is not None:
@@ -305,11 +362,9 @@ if "chat_session" in st.session_state:
 
         st.markdown("---")
         
-        # ★ お助けツール全体を独立したコンテナで囲む（背景色は上のCSSで黄色になります）
         with st.container(border=True):
             st.write("🛠️ **お助けツール（※これらを使っても会話は先に進みません）**")
 
-            # ① お助け翻訳機能
             st.write("💡 **① お助け翻訳（言いたいことが英語で出てこない時）**")
             with st.form("translation_form", clear_on_submit=False):
                 col1, col2 = st.columns([4, 1])
@@ -324,12 +379,10 @@ if "chat_session" in st.session_state:
                         translator = genai.GenerativeModel(selected_model)
                         trans_prompt = f"以下の日本語を、英会話のセリフとして自然な英語に翻訳してください。出力は英語のセリフのみとし、解説や前置きは一切不要です。\n\n日本語: {jp_text}"
                         trans_res = translator.generate_content(trans_prompt)
-                        
                         st.success(f"✨ こんな風に言ってみましょう！\n\n### {trans_res.text.strip()}\n\n👆 少し上のマイクボタンを押して、声に出して読んでみてください。")
                     except Exception as e:
                         st.error("翻訳中にエラーが発生しました。")
             
-            # ② わからない単語を調べる辞書機能
             st.write("📖 **② 英単語を調べる**")
             with st.form("dictionary_form", clear_on_submit=False):
                 col1, col2 = st.columns([4, 1])
@@ -347,7 +400,6 @@ if "chat_session" in st.session_state:
                     except Exception as e:
                         st.error("検索に失敗しました。")
             
-            # ③ 直前の質問の日本語訳を見る機能
             st.write("🇯🇵 **③ 直前のAIのセリフの日本語訳**")
             if st.button("直前のセリフの「日本語訳」だけを見る"):
                 if last_msg and last_msg["role"] == "assistant" and "[英語の質問]" in last_msg["content"]:
@@ -362,18 +414,13 @@ if "chat_session" in st.session_state:
                 else:
                     st.warning("翻訳できる質問が見つかりませんでした。")
             
-            # ④ ちょい足しヒント機能
             st.write("🧠 **④ ちょい足しヒント（自力で答えるためのアシスト）**")
             with st.form("hint_form", clear_on_submit=False):
                 hint_col1, hint_col2 = st.columns([3, 2])
                 with hint_col1:
                     hint_type = st.selectbox(
                         "どんなヒントが欲しいですか？",
-                        [
-                            "使うべき英単語を3つ教えて",
-                            "文の出だし（最初の3〜4語）を教えて",
-                            "何て答えればいいか、日本語でアイデアを教えて"
-                        ],
+                        ["使うべき英単語を3つ教えて", "文の出だし（最初の3〜4語）を教えて", "何て答えればいいか、日本語でアイデアを教えて"],
                         label_visibility="collapsed"
                     )
                 with hint_col2:
@@ -386,12 +433,11 @@ if "chat_session" in st.session_state:
                             try:
                                 hint_ai = genai.GenerativeModel(selected_model)
                                 if hint_type == "使うべき英単語を3つ教えて":
-                                    hint_prompt = f"以下の質問に答えるために役立つ英単語（または熟語）を3つだけ、日本語の意味を添えて箇条書きで教えてください。英語の正解（フルセンテンス）は絶対に書かないでください。\n質問: {eng_q}"
+                                    hint_prompt = f"以下の質問に答えるために役立つ英単語（または熟語）を3つだけ、日本語の意味を添えて箇条書きで教えてください。英語の正解は絶対に書かないでください。\n質問: {eng_q}"
                                 elif hint_type == "文の出だし（最初の3〜4語）を教えて":
-                                    hint_prompt = f"以下の質問に答えるための、自然な英文の書き出し（最初の3〜5語のみ）を1パターンだけ教えてください。日本語訳や解説、文の続きは絶対に書かないでください。\n質問: {eng_q}"
+                                    hint_prompt = f"以下の質問に答えるための、自然な英文の書き出し（最初の3〜5語のみ）を1パターンだけ教えてください。日本語訳や解説、文の続きは書かないでください。\n質問: {eng_q}"
                                 else:
-                                    hint_prompt = f"以下の質問に対して、どのような内容を答えればよいか、日本語で簡潔に2つのアイデア（方向性）を提案してください。英語の解答例は絶対に書かないでください。\n質問: {eng_q}"
-
+                                    hint_prompt = f"以下の質問に対して、どのような内容を答えればよいか、日本語で簡潔に2つのアイデア（方向性）を提案してください。英語の解答例は書かないでください。\n質問: {eng_q}"
                                 hint_res = hint_ai.generate_content(hint_prompt)
                                 st.info(f"💡 **ヒント:**\n{hint_res.text.strip()}")
                             except Exception as e:
@@ -399,7 +445,6 @@ if "chat_session" in st.session_state:
                     else:
                         st.warning("ヒントを出せる質問が見つかりませんでした。")
             
-            # ⑤ 究極の救済：ギブアップ
             st.write("🏳️ **⑤ どうしても答えられない時**")
             if st.button("ギブアップ（解説と回答例を見て、リピート練習へ進む）"):
                 prompt = """
