@@ -3,7 +3,7 @@ import google.generativeai as genai
 from gtts import gTTS
 import PyPDF2
 import io
-import json  # 設定の保存・読み込みのために追加
+import json
 
 # === 🎨 画面デザインのカスタマイズ（CSS） ===
 st.markdown("""
@@ -66,7 +66,6 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # 🌟 新機能：設定ファイルの読み込み
     st.write("📂 **設定の読み込み**")
     setting_file = st.file_uploader("保存した設定（.json）をアップロード", type=["json"])
     
@@ -78,16 +77,14 @@ with st.sidebar:
         except Exception:
             st.error("ファイルの読み込みに失敗しました。")
 
-    # 読み込んだデータがあれば初期値としてセット、なければデフォルト値
     def_level = loaded_settings.get("level", "2: 初心者（日常会話の基礎）")
     def_uname = loaded_settings.get("user_name", "")
     def_pq = loaded_settings.get("preset_questioner", "同年代の友達")
     def_fq = loaded_settings.get("free_questioner", "")
-    def_sit = loaded_settings.get("situation", "")
+    def_sit = loaded_settings.get("situation", "例: 私の発表が終わった後の質疑応答の時間です。少し意地悪な質問をしてください。")
     def_fw = loaded_settings.get("focus_words", "")
     def_doc = loaded_settings.get("doc_text", "")
 
-    # 各種設定の入力欄
     level_list = [
         "1: 超初心者（簡単な単語・短い文・ゆっくり）", 
         "2: 初心者（日常会話の基礎）", 
@@ -116,7 +113,6 @@ with st.sidebar:
     situation = st.text_area("🎬 シチュエーション", value=def_sit, height=100)
     focus_words = st.text_input("🎯 練習したい単語・テーマ (任意)", value=def_fw, placeholder="例: 医療系頻出単語")
     
-    # 資料の読み込み（設定ファイルから復元されたテキストを保持しつつ、新規アップロードも可能）
     st.write("📁 資料を読み込ませる")
     doc_text = def_doc
     uploaded_file = st.file_uploader("新しい資料 (PDF/TXT) ※設定ファイル読込済なら不要", type=["pdf", "txt"])
@@ -137,7 +133,6 @@ with st.sidebar:
 
     st.markdown("---")
     
-    # 🌟 新機能：現在の設定を保存
     st.write("💾 **現在の設定を保存する**")
     current_settings = {
         "level": level,
@@ -156,21 +151,18 @@ with st.sidebar:
     end_button = st.button("🛑 会話を終了して評価をもらう", use_container_width=True)
 
     st.markdown("---")
-    # 🌟 新機能：今日の会話を保存（ログ生成）
     if "messages" in st.session_state and len(st.session_state.messages) > 0:
         log_text = "【今日の英会話記録】\n\n"
         for msg in st.session_state.messages:
-            # システム用の裏側プロンプトは除外する
             if msg["role"] == "user" and msg["content"].startswith("（"):
                 continue
-            
             sender = "あなた" if msg["role"] == "user" else "AI"
             content = msg["content"].replace("[フィードバック]", "\n[フィードバック]").replace("[英語の質問]", "\n[英語の質問]").replace("[リピート練習]", "\n[リピート練習]")
             log_text += f"{sender}:\n{content.strip()}\n\n{'='*40}\n\n"
             
         st.download_button("📝 今日の会話記録を保存（.txt）", data=log_text, file_name="english_log.txt", mime="text/plain", use_container_width=True)
 
-
+# ★変更点：システム指示に「アポストロフィ禁止」と「和訳出力の指定」を追加
 system_instruction = f"""
 あなたは英会話のロールプレイング相手です。
 
@@ -187,11 +179,13 @@ system_instruction = f"""
 3. 通信量削減のため、感情表現や前置きは一切不要です。客観的かつ極めて簡潔に出力してください。
 4. フィードバックは、必ずMarkdown形式の箇条書き（- ）を使用し、各項目の後には必ず改行を入れて、1行ずつ独立させて表示してください。横に繋げて書くのは厳禁です。
 5. 【重点テーマ・単語】が入力されている場合、そのテーマの単語をあなたの質問に含め、ユーザーにも回答で使うよう英語で促してください。
-6. ユーザーの回答に応じて、以下の「指定フォーマット」のいずれかで出力してください。
+6. 【重要】英文中で単語を強調する際は、絶対にアポストロフィ（' '）やダブルクォーテーション（" "）で囲まないでください（音声読み上げソフトが記号をそのまま発音してしまうため）。強調したい場合は、必ずMarkdownの太字（**単語**）を使用してください。
+7. ユーザーの回答に応じて、以下の「指定フォーマット」のいずれかで出力してください。
 
 ▼ パターンA：ユーザーの英語にミスがある、または不自然な場合（リピート練習）
 [フィードバック]
 - （日本語でミスの指摘と、より自然な表現の解説）
+- （★重要：ここで必ず、すぐ下で提示する「リピート練習用の英文」の【日本語訳】を記載してください）
 [リピート練習]
 （ユーザーがそのまま復唱するための、正しい自然な英語のセリフのみ。新しい質問はしないこと）
 
@@ -220,7 +214,6 @@ if start_button:
 if end_button and "chat_session" in st.session_state:
     with st.spinner("AIが成績をまとめています..."):
         try:
-            # 🌟 変更点：評価プロンプトを「褒めて伸ばす＆スコア化」に修正
             summary_prompt = """
             ここまでの会話を終了します。通信量削減のため、不要な前置きは省いてください。
             学習者のモチベーションが上がるように、まずはたくさん褒めてください！
@@ -287,7 +280,7 @@ if "chat_session" in st.session_state:
         target_practice_text = last_msg["content"].split("[リピート練習]")[1].strip()
 
     if is_practice:
-        # ＝＝＝ 🔄 リピート練習モードの画面（AI判定付き） ＝＝＝
+        # ＝＝＝ 🔄 リピート練習モードの画面 ＝＝＝
         st.info("🔄 **リピート練習モード**：上のお手本を聞いて、マイクで発音してみましょう。")
         
         practice_audio = st.audio_input("発音をチェックする")
@@ -325,20 +318,39 @@ if "chat_session" in st.session_state:
                     except Exception as e:
                         st.error("エラー: もう少しゆっくり、はっきりと話してみてください。")
         
-        if st.button("▶️ 満足したので次へ進む（会話を再開）", type="primary", use_container_width=True):
-            prompt = "（リピート練習を完了しました。先ほどの続きから、会話を再開するための新しい質問を英語でしてください。）"
-            display_prompt = "（✅ リピート練習を完了し、次へ進みました）"
+        # ★変更点：練習完了ボタンとUndo（やり直し）ボタンを横並びで配置
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("▶️ 練習完了！次へ進む", type="primary", use_container_width=True):
+                prompt = "（リピート練習を完了しました。先ほどの続きから、会話を再開するための新しい質問を英語でしてください。）"
+                display_prompt = "（✅ リピート練習を完了し、次へ進みました）"
+        with col2:
+            if st.button("↩️ 練習せず、1つ前の質問に答え直す (Undo)", use_container_width=True):
+                # ★ Undoのロジック：ユーザーの誤答とAIの指摘の2ターン分を削除し、モデルを再構築する
+                if len(st.session_state.messages) >= 3:
+                    st.session_state.messages = st.session_state.messages[:-2]
+                    
+                    re_model = genai.GenerativeModel(selected_model, system_instruction=system_instruction)
+                    formatted_history = []
+                    for m in st.session_state.messages:
+                        r = "model" if m["role"] == "assistant" else "user"
+                        formatted_history.append({"role": r, "parts": [m["content"]]})
+                        
+                    st.session_state.chat_session = re_model.start_chat(history=formatted_history)
+                    st.session_state.last_played_msg_idx = -1
+                    st.rerun()
+                else:
+                    st.warning("これ以上巻き戻せません。最初からやり直してください。")
             
     else:
         # ＝＝＝ 🗣️ 通常モードの画面 ＝＝＝
         st.write("🗣️ **あなたのターン（回答を録音して送信）**")
 
-        # 🌟 新機能：今の質問をやり直すボタン（マイクの上に設置）
         if st.button("🔄 今の質問をもう一度聞く（別の言い方で答え直したい時など）"):
             prompt = "すみません、あなたの今の質問にもう一度別の言い方で答えたいので、全く同じ質問文をもう一度言ってください。新しい質問はしないでください。"
             display_prompt = "（🔄 今の質問をもう一度繰り返してください）"
 
-        # 【メインアクション】マイク入力
+        # 【メインアクション】
         audio_value = st.audio_input("マイクを押して回答を録音・送信")
 
         if audio_value is not None:
@@ -446,6 +458,8 @@ if "chat_session" in st.session_state:
                         st.warning("ヒントを出せる質問が見つかりませんでした。")
             
             st.write("🏳️ **⑤ どうしても答えられない時**")
+            
+            # ★変更点：ギブアップ時のプロンプトに「回答例の日本語訳を[フィードバック]の中に書く」よう指示を追加
             if st.button("ギブアップ（解説と回答例を見て、リピート練習へ進む）"):
                 prompt = """
                 今の質問の意図がわかりません。通信量削減のため、無駄な前置きは一切省き、以下の構成で極めて簡潔に出力してください。今回は【新しい質問は行わず】、私がそのまま復唱できる回答例を提示してください。
@@ -453,7 +467,7 @@ if "chat_session" in st.session_state:
                 [フィードバック]
                 - 直前の質問の英語と日本語訳
                 - 質問の意図（1文で）
-                - この状況での自然な回答例の解説（日本語）
+                - この状況での自然な回答例の解説と、【★重要：その回答例の日本語訳】（絶対にここに書いてください）
                 
                 [リピート練習]
                 （私がそのまま復唱して答えるための、英語の回答例のセリフのみ。複数の場合は一番標準的なものを1つだけ。絶対に新しい質問はしないこと）
