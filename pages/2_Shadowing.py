@@ -3,7 +3,7 @@ import google.generativeai as genai
 from gtts import gTTS
 import io
 import re
-import PyPDF2  # ★追加：PDF読み込み用
+import PyPDF2
 
 # === 🎨 デザインカスタマイズ ===
 st.markdown("""
@@ -36,10 +36,36 @@ def clean_text_for_tts(text):
     text = re.sub(r"(?<!\w)['\"]|['\"](?!\w)", '', text)
     return text.strip()
 
+# ★追加：長文を「約1分（約130単語）」ごとの意味段落に綺麗に分割する関数
+def split_script_into_blocks(text, max_words=130):
+    # ピリオド、！、？の後にスペースがある場所で文を分割
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    blocks = []
+    current_block = []
+    current_word_count = 0
+    
+    for s in sentences:
+        if not s.strip(): 
+            continue
+        word_count = len(s.split())
+        # 次の文を足すと文字数オーバーになる場合は、現在のブロックを保存して新しいブロックへ
+        if current_word_count + word_count > max_words and current_block:
+            blocks.append(" ".join(current_block))
+            current_block = [s]
+            current_word_count = word_count
+        else:
+            current_block.append(s)
+            current_word_count += word_count
+            
+    # 最後のブロックを追加
+    if current_block:
+        blocks.append(" ".join(current_block))
+        
+    return blocks
+
 st.title("🎧 シャドーイング道場")
 st.write("お手本を聞いて、限界まで自力で練習！自信がついたらAIの厳格チェックに挑みましょう。")
 
-# ★追加：シャドーイングの判定履歴を保存するリスト
 if "shadowing_history" not in st.session_state:
     st.session_state.shadowing_history = []
 
@@ -48,7 +74,6 @@ if "shadowing_history" not in st.session_state:
 # ==========================================
 st.header("📂 1. 教材の準備")
 
-# ★追加：「ファイルを読み込む」タブを4つ目として追加
 setup_tab1, setup_tab2, setup_tab3, setup_tab4 = st.tabs(["🔄 ロールプレイから引継ぐ", "✨ AIにおまかせ生成", "📝 自分で英文を入力", "📁 ファイルを読み込む"])
 
 if "shadowing_script" not in st.session_state:
@@ -126,7 +151,7 @@ with setup_tab3:
         else:
             st.warning("英文を入力してください。")
 
-# ★追加：タブ4：ファイル読み込み
+# タブ4：ファイル読み込み
 with setup_tab4:
     st.write("📄 **PDFやテキストファイルから英文だけを抽出します。**")
     uploaded_file = st.file_uploader("スクリプトや教材ファイル（.txt または .pdf）", type=["txt", "pdf"])
@@ -136,7 +161,6 @@ with setup_tab4:
             with st.spinner("ファイルから英文だけを抽出中..."):
                 try:
                     raw_text = ""
-                    # ファイルのテキストを読み込む
                     if uploaded_file.name.endswith('.pdf'):
                         reader = PyPDF2.PdfReader(uploaded_file)
                         raw_text = "".join([page.extract_text() + "\n" for page in reader.pages])
@@ -144,7 +168,6 @@ with setup_tab4:
                         raw_text = uploaded_file.read().decode('utf-8')
                     
                     if raw_text.strip():
-                        # AIに「英文だけ」を抜き出させる（通信料の安いモデルを使用）
                         ai = genai.GenerativeModel("gemini-2.5-flash-lite")
                         extract_prompt = f"以下のテキストから、英語の文章（セリフやスクリプト）のみを抽出してください。日本語の解説や目次、不要な記号などは完全に除外し、純粋な英語のテキストだけを出力してください。\n\n{raw_text}"
                         extracted_text = ai.generate_content(extract_prompt).text
@@ -169,14 +192,32 @@ st.markdown("---")
 st.header("🏋️ 2. トレーニング")
 
 if st.session_state.shadowing_script:
-    st.write("📖 **現在のスクリプト（全文）**")
-    st.info(st.session_state.shadowing_script)
+    st.write("📖 **現在のスクリプト（ブロック表示）**")
     
-    col1, col2 = st.columns(2)
+    # ★変更：長文を約1分ごとのブロックに分割して表示
+    script_blocks = split_script_into_blocks(st.session_state.shadowing_script)
     
-    with col1:
-        if st.button("🔊 全文のお手本を通しで聞く", use_container_width=True):
+    for idx, block in enumerate(script_blocks):
+        st.info(block)
+        if st.button(f"🔊 パート {idx + 1} のお手本を聞く", key=f"play_part_{idx}"):
             with st.spinner("音声を生成中..."):
+                speak_text = clean_text_for_tts(block)
+                try:
+                    tts = gTTS(text=speak_text, lang='en')
+                    fp = io.BytesIO()
+                    tts.write_to_fp(fp)
+                    fp.seek(0)
+                    st.audio(fp, format="audio/mp3", autoplay=True)
+                except Exception:
+                    st.error("音声の生成に失敗しました。")
+    
+    st.write("") # スペース確保
+    
+    # 全文再生ボタンと1文特訓ボタンはそのまま共存
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🔊 全文のお手本を一気に通しで聞く", use_container_width=True):
+            with st.spinner("音声を生成中...（長文の場合は数秒かかります）"):
                 speak_text = clean_text_for_tts(st.session_state.shadowing_script)
                 try:
                     tts = gTTS(text=speak_text, lang='en')
@@ -188,7 +229,7 @@ if st.session_state.shadowing_script:
                     st.error("音声の生成に失敗しました。")
 
     with col2:
-        if st.button("✂️ 1文ずつに分割して特訓する", type="primary", use_container_width=True):
+        if st.button("✂️ さらに「1文ずつ」に分割してAI特訓に進む", type="primary", use_container_width=True):
             with st.spinner("AIが和訳と分割を行っています... (※ここで1回だけ通信します)"):
                 ai = genai.GenerativeModel("gemini-2.5-flash")
                 split_prompt = f"""
@@ -212,14 +253,13 @@ if st.session_state.shadowing_script:
 
     st.markdown("---")
 
-# 分割されたチャンクの表示と練習UI
+# 分割されたチャンクの表示と練習UI（以降は変更なし）
 if "shadowing_chunks" in st.session_state and st.session_state.shadowing_chunks:
     st.write("🎯 **1文ずつの特訓＆AI判定**")
     display_mode = st.radio("👀 画面表示モード", ["英語 ＋ 和訳", "英語のみ", "ブラインド（文字を隠す）"], horizontal=True)
 
     for i, chunk in enumerate(st.session_state.shadowing_chunks):
         with st.container(border=True):
-            # 1. 表示切替
             if display_mode == "英語 ＋ 和訳":
                 st.markdown(f"**🇺🇸 {chunk['en']}**")
                 st.caption(f"🇯🇵 {chunk['ja']}")
@@ -228,7 +268,6 @@ if "shadowing_chunks" in st.session_state and st.session_state.shadowing_chunks:
             else:
                 st.markdown("🔒 *(Text Hidden - 耳だけを頼りに！)*")
 
-            # 2. お手本音声
             speak_text = clean_text_for_tts(chunk['en'])
             try:
                 tts = gTTS(text=speak_text, lang='en')
@@ -239,95 +278,10 @@ if "shadowing_chunks" in st.session_state and st.session_state.shadowing_chunks:
             except Exception:
                 pass
 
-            # 3. テスト録音
             test_audio = st.audio_input("マイクで録音する", key=f"sh_mic_{i}")
             if test_audio:
                 if st.button("📤 この発音をAIに判定してもらう", key=f"sh_btn_{i}", type="primary"):
                     with st.spinner("鬼判定中..."):
                         try:
-                            # 文字起こし
                             transcriber = genai.GenerativeModel("gemini-2.5-flash")
-                            res = transcriber.generate_content([{"mime_type": "audio/wav", "data": test_audio.getvalue()}, "英語を文字起こししてください。文字のみ出力。"])
-                            user_spoken = res.text.strip() if res.parts else ""
-                            st.write(f"🎤 あなたの発音: **{user_spoken}**")
-
-                            # 判定（記号無視）
-                            judge_prompt = f"""
-                            お手本:「{chunk['en']}」
-                            発音:「{user_spoken}」
-                            
-                            【判定ルール】
-                            上記2つを比較し、英単語が一言一句同じか判定してください。
-                            ただし、ピリオド(.)、カンマ(,)、感嘆符(!)、疑問符(?)などの「句読点の有無や違い」や、「大文字・小文字の違い」は【絶対に無視】してください。
-                            純粋に「発音された単語」に違いや抜け漏れがある場合のみ、日本語で1文で厳しく指摘してください。完全に一致していれば合格としてください。
-                            """
-                            judge_model = genai.GenerativeModel("gemini-2.5-flash")
-                            judge_res = judge_model.generate_content(judge_prompt)
-                            judge_text = judge_res.text.strip()
-                            st.success(f"🤖 判定: {judge_text}")
-                            
-                            # 判定履歴を保存
-                            st.session_state.shadowing_history.append({
-                                "お手本": chunk['en'],
-                                "ユーザー発音": user_spoken,
-                                "AI判定": judge_text
-                            })
-                            
-                        except Exception:
-                            st.error("エラーが発生しました。")
-
-    st.markdown("---")
-    
-    # ==========================================
-    # 3. 総評エリア
-    # ==========================================
-    st.header("🏆 3. 今日の総評")
-    st.write("シャドーイング練習お疲れ様でした！最後に今日の頑張りをAIコーチに評価してもらいましょう。")
-    
-    if st.button("🛑 今日の練習を終了して総評をもらう", use_container_width=True):
-        if not st.session_state.shadowing_history:
-            st.warning("まだAI判定を受けていないようです。まずは上のチャンクごとにマイクで発音を判定してみましょう！")
-        else:
-            with st.spinner("AIコーチが今日の頑張りを評価しています..."):
-                try:
-                    # 履歴をテキスト化してAIに渡す
-                    history_text = ""
-                    for idx, record in enumerate(st.session_state.shadowing_history, 1):
-                        history_text += f"\n【{idx}回目】\n"
-                        history_text += f"お手本: {record['お手本']}\n"
-                        history_text += f"発音: {record['ユーザー発音']}\n"
-                        history_text += f"判定: {record['AI判定']}\n"
-                        
-                    evaluation_prompt = f"""
-                    あなたは情熱的で優しい英語の発音コーチです。
-                    生徒が今日のシャドーイング練習を終えました。以下の「AI判定履歴」をもとに、今日の頑張りをたくさん褒めて、総評を出力してください。
-                    
-                    【生徒の練習履歴】
-                    {history_text}
-                    
-                    以下のフォーマットで出力してください。前置きは不要です。
-                    
-                    【本日のシャドーイングスコア】
-                    - 発音の正確さ: 〇/100点
-                    - 流暢さ・再現度: 〇/100点
-                    - 練習への熱意: 〇/100点
-                    - 総合スコア: 〇/100点
-                    
-                    【良かった点・褒めポイント】
-                    - （具体的に良かった点を箇条書きでたくさん褒める）
-                    
-                    【今後の課題・アドバイス】
-                    - （発音の傾向や苦手な単語があれば優しく指摘し、ポジティブにアドバイス）
-                    """
-                    
-                    eval_model = genai.GenerativeModel("gemini-2.5-flash")
-                    eval_res = eval_model.generate_content(evaluation_prompt)
-                    
-                    st.session_state.shadowing_evaluation = eval_res.text.strip()
-                except Exception as e:
-                    st.error(f"評価の作成に失敗しました。{e}")
-                    
-    # 総評結果の表示
-    if "shadowing_evaluation" in st.session_state:
-        st.success("🎉 **AIコーチからの総評**")
-        st.markdown(st.session_state.shadowing_evaluation)
+                            res = transcriber.generate_content([{"mime_type": "audio/wav
