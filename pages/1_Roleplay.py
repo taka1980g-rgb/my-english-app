@@ -24,12 +24,11 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# === 🚪 入場パスワードのチェック（マルチページ対応版） ===
+# === 🚪 入場パスワードのチェック ===
 if not st.session_state.get("password_correct", False):
     st.warning("👈 左上の「＞」を押して、ホーム画面から合言葉を入力してください。")
     st.stop()
 
-# ★ログ保存時のカウント用変数
 if "log_save_count" not in st.session_state:
     st.session_state.log_save_count = 1
 
@@ -42,7 +41,6 @@ except Exception:
     st.stop()
 genai.configure(api_key=MY_API_KEY.strip())
 
-# === 🧹 音声読み上げ用テキストクリーナー ===
 def clean_text_for_tts(text):
     text = re.sub(r'[*_#~]', '', text)
     text = re.sub(r"(?<!\w)['\"]|['\"](?!\w)", '', text)
@@ -50,7 +48,6 @@ def clean_text_for_tts(text):
 
 st.title("My English Roleplay AI 🗣️")
 
-# === ⚙️ サイドバーの設定と保存・読み込み ===
 with st.sidebar:
     st.header("⚙️ 設定メニュー")
     
@@ -119,16 +116,8 @@ with st.sidebar:
         def increment_log_count():
             st.session_state.log_save_count += 1
             
-        st.download_button(
-            "📝 今日の会話記録を保存（.txt）", 
-            data=log_text, 
-            file_name=dynamic_file_name, 
-            mime="text/plain", 
-            use_container_width=True,
-            on_click=increment_log_count
-        )
+        st.download_button("📝 今日の会話記録を保存（.txt）", data=log_text, file_name=dynamic_file_name, mime="text/plain", use_container_width=True, on_click=increment_log_count)
 
-# === 🤖 AIへの絶対的な指示書 ===
 system_instruction = f"""
 あなたは英会話のロールプレイング相手です。
 【相手の役柄】: {questioner}
@@ -188,7 +177,6 @@ if start_button:
     except Exception as e:
         st.error(f"準備中にエラーが発生しました: {e}")
 
-# === 会話の描画と音声再生 ===
 if "chat_session" in st.session_state:
     for i, message in enumerate(st.session_state.messages):
         if message["role"] == "user" and message["content"].startswith("（"):
@@ -240,7 +228,6 @@ if "chat_session" in st.session_state:
         is_practice = True
         target_practice_text = last_msg["content"].split("[リピート練習]")[1].strip()
 
-    # ＝＝＝ 🌟 復習モード ＝＝＝
     if st.session_state.get("is_review_mode", False):
         st.header("📝 復習モード（一問一答）")
         st.write("今日の会話で登場した質問です。もう一度答えたい質問を選んで練習しましょう。（何度でも練習できます）")
@@ -284,7 +271,6 @@ if "chat_session" in st.session_state:
                         except Exception:
                             st.error("エラーが発生しました。もう一度はっきり話してみてください。")
 
-    # ＝＝＝ 🔄 リピート練習モード ＝＝＝
     elif is_practice:
         st.info("🔄 **リピート練習モード**：マイクで発音してみましょう。")
         practice_audio = st.audio_input("発音を録音する")
@@ -298,8 +284,18 @@ if "chat_session" in st.session_state:
                         user_spoken = res.text.strip() if res.parts else ""
                         st.write(f"🎤 あなたの発音: **{user_spoken}**")
                         
+                        # ★修正ポイント：記号と大文字小文字を完全に無視させるプロンプト
+                        judge_prompt = f"""
+                        お手本:「{target_practice_text}」
+                        発音:「{user_spoken}」
+                        
+                        【判定ルール】
+                        上記2つを比較し、英単語が一言一句同じか判定してください。
+                        ただし、ピリオド(.)、カンマ(,)、感嘆符(!)、疑問符(?)などの「句読点の有無や違い」や、「大文字・小文字の違い」は【絶対に無視】してください。
+                        純粋に「発音された単語」に違いや抜け漏れがある場合のみ、日本語で1文で厳しく指摘してください。完全に一致していれば合格としてください。
+                        """
                         judge_model = genai.GenerativeModel(selected_model)
-                        judge_res = judge_model.generate_content(f"お手本:「{target_practice_text}」\n発音:「{user_spoken}」\n一言一句同じか厳格に判定し、違いがあれば日本語で1文で指摘してください。")
+                        judge_res = judge_model.generate_content(judge_prompt)
                         st.success(f"🤖 判定: {judge_res.text.strip()}")
                     except Exception:
                         st.error("聞き取れませんでした。もう一度お願いします。")
@@ -322,7 +318,6 @@ if "chat_session" in st.session_state:
                 else:
                     st.warning("これ以上巻き戻せません。")
 
-    # ＝＝＝ 🗣️ 通常モード ＝＝＝
     else:
         st.write("🗣️ **あなたのターン**")
         
@@ -346,7 +341,6 @@ if "chat_session" in st.session_state:
 
         st.markdown("---")
         
-        # 🛠️ お助けツール群
         with st.container(border=True):
             st.write("🛠️ **お助けツール（※会話は進みません）**")
             current_q = last_msg["content"].split("[英語の質問]")[1].strip() if last_msg and "[英語の質問]" in last_msg["content"] else ""
@@ -465,7 +459,6 @@ if "chat_session" in st.session_state:
                 """
                 display_prompt = "（🏳️ ギブアップして、解説と回答例をリクエストしました）"
 
-    # ＝＝＝ 送信処理（スマートトリミング適用） ＝＝＝
     if prompt and display_prompt:
         st.session_state.messages.append({"role": "user", "content": display_prompt})
         st.session_state.tool_cache = {} 
@@ -484,7 +477,6 @@ if "chat_session" in st.session_state:
             except Exception as e:
                 st.error("エラーが発生しました。")
 
-# === 評価処理 ＆ 復習リスト作成 ===
 if end_button and "chat_session" in st.session_state:
     with st.spinner("成績をまとめています..."):
         summary_prompt = """
