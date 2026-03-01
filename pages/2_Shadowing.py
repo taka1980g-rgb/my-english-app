@@ -4,6 +4,7 @@ from gtts import gTTS
 import io
 import re
 import PyPDF2
+from datetime import datetime  # ★追加：日付取得用
 
 # === 🎨 デザインカスタマイズ ===
 st.markdown("""
@@ -147,39 +148,66 @@ with setup_tab3:
         else:
             st.warning("英文を入力してください。")
 
-# タブ4：高度なファイル読み込み
+# ★改良：タブ4：高度なファイル読み込み（直接セット機能の追加）
 with setup_tab4:
-    st.write("📄 **PDFやテキストファイルから英文だけを抽出し、好きな部分だけをスクリプトにします。**")
+    st.write("📄 **PDFやテキストファイルから英文を読み込みます。**")
     uploaded_file = st.file_uploader("スクリプトや教材ファイル（.txt または .pdf）", type=["txt", "pdf"])
     
-    if st.button("① このファイルから英文を抽出する"):
-        if uploaded_file:
-            with st.spinner("ファイルから英文だけを抽出中..."):
-                try:
-                    raw_text = ""
-                    if uploaded_file.name.endswith('.pdf'):
-                        reader = PyPDF2.PdfReader(uploaded_file)
-                        raw_text = "".join([page.extract_text() + "\n" for page in reader.pages])
-                    else:
-                        raw_text = uploaded_file.read().decode('utf-8')
-                    
-                    if raw_text.strip():
-                        ai = genai.GenerativeModel("gemini-2.5-flash-lite")
-                        extract_prompt = f"以下のテキストから、英語の文章（セリフやスクリプト）のみを抽出してください。日本語の解説や目次、不要な記号などは完全に除外し、純粋な英語のテキストだけを出力してください。改行は元の文章のまとまりを維持してください。\n\n{raw_text}"
-                        extracted_text = ai.generate_content(extract_prompt).text
+    if uploaded_file:
+        st.markdown("---")
+        st.write("📥 **どちらの方法で読み込みますか？**")
+        col_direct, col_extract = st.columns(2)
+        
+        with col_direct:
+            if st.button("① そのまま台本にする\n(前回保存したファイル等)", use_container_width=True):
+                with st.spinner("読み込み中..."):
+                    try:
+                        raw_text = ""
+                        if uploaded_file.name.endswith('.pdf'):
+                            reader = PyPDF2.PdfReader(uploaded_file)
+                            raw_text = "".join([page.extract_text() + "\n" for page in reader.pages])
+                        else:
+                            raw_text = uploaded_file.read().decode('utf-8')
                         
-                        blocks = [b.strip() for b in extracted_text.split('\n') if b.strip()]
-                        st.session_state.extracted_blocks = blocks
-                        st.session_state.block_checks = [True] * len(blocks)
-                        st.success("抽出完了！下のリストで不要な行のチェックを外してください。")
-                    else:
-                        st.warning("ファイルからテキストを読み込めませんでした。")
-                except Exception as e:
-                    st.error(f"ファイルの読み込み中にエラーが発生しました: {e}")
-        else:
-            st.warning("ファイルをアップロードしてください。")
+                        if raw_text.strip():
+                            st.session_state.shadowing_script = raw_text.strip()
+                            st.session_state.pop("shadowing_chunks", None)
+                            st.session_state.shadowing_history = []
+                            st.session_state.pop("shadowing_evaluation", None)
+                            st.session_state.pop("extracted_blocks", None)
+                            st.session_state.pop("manual_edit_text", None)
+                            st.success("セット完了！下へ進んでください。")
+                        else:
+                            st.warning("ファイルからテキストを読み込めませんでした。")
+                    except Exception as e:
+                        st.error(f"読み込みエラー: {e}")
 
-    # 取捨選択エリア
+        with col_extract:
+            if st.button("② AIで英文のみ抽出\n(PDF教材などノイズが多い時)", use_container_width=True):
+                with st.spinner("ファイルから英文だけを抽出中..."):
+                    try:
+                        raw_text = ""
+                        if uploaded_file.name.endswith('.pdf'):
+                            reader = PyPDF2.PdfReader(uploaded_file)
+                            raw_text = "".join([page.extract_text() + "\n" for page in reader.pages])
+                        else:
+                            raw_text = uploaded_file.read().decode('utf-8')
+                        
+                        if raw_text.strip():
+                            ai = genai.GenerativeModel("gemini-2.5-flash-lite")
+                            extract_prompt = f"以下のテキストから、英語の文章（セリフやスクリプト）のみを抽出してください。日本語の解説や目次、不要な記号などは完全に除外し、純粋な英語のテキストだけを出力してください。改行は元の文章のまとまりを維持してください。\n\n{raw_text}"
+                            extracted_text = ai.generate_content(extract_prompt).text
+                            
+                            blocks = [b.strip() for b in extracted_text.split('\n') if b.strip()]
+                            st.session_state.extracted_blocks = blocks
+                            st.session_state.block_checks = [True] * len(blocks)
+                            st.success("抽出完了！下のリストで不要な行のチェックを外してください。")
+                        else:
+                            st.warning("ファイルからテキストを読み込めませんでした。")
+                    except Exception as e:
+                        st.error(f"ファイルの読み込み中にエラーが発生しました: {e}")
+
+    # 取捨選択エリア（抽出を選んだ場合のみ表示）
     if st.session_state.get("extracted_blocks"):
         st.markdown("### ✂️ ② 取捨選択（不要なものはチェックを外す）")
         
@@ -226,7 +254,19 @@ st.header("🏋️ 2. トレーニング")
 
 if st.session_state.shadowing_script:
     
-    st.write("📖 **現在のスクリプト（全体・ブロック再生）**")
+    # ★追加：現在の台本を保存するボタン
+    col_title, col_save = st.columns([2, 1])
+    with col_title:
+        st.write("📖 **現在のスクリプト（全体・ブロック再生）**")
+    with col_save:
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        st.download_button(
+            "💾 この台本を保存する(次回用)",
+            data=st.session_state.shadowing_script,
+            file_name=f"{today_str}_shadowing_script.txt",
+            mime="text/plain",
+            use_container_width=True
+        )
     
     block_display_mode = st.radio("👀 画面表示モード", ["英語を表示", "ブラインド（文字を隠す）"], horizontal=True, key="block_display")
     
@@ -265,7 +305,7 @@ if st.session_state.shadowing_script:
     
     st.write("")
     
-    # ★追加機能：ちょこっと翻訳・辞書ツール
+    # ちょこっと翻訳・辞書ツール
     with st.expander("💡 ちょこっと翻訳・辞書ツール（通信料節約）"):
         st.write("練習に進む前に、わからない単語やフレーズがあればここへコピペして調べられます。")
         with st.form("quick_trans_form", clear_on_submit=False):
@@ -275,7 +315,6 @@ if st.session_state.shadowing_script:
         if q_btn and q_text:
             with st.spinner("AIがサクッと調べています..."):
                 try:
-                    # 通信料の安いLiteモデルを使用
                     dict_ai = genai.GenerativeModel("gemini-2.5-flash-lite")
                     dict_prompt = f"以下の英単語または英語フレーズの日本語の意味を、簡潔にわかりやすく教えてください。\n\n対象: {q_text}"
                     dict_res = dict_ai.generate_content(dict_prompt)
