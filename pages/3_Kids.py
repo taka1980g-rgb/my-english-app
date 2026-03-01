@@ -6,7 +6,7 @@ import re
 import json
 from datetime import datetime
 
-# === 🎨 キッズ専用・省スペース＆でか文字デザイン ===
+# === 🎨 キッズ専用・省スペース＆ポップアップデザイン ===
 st.markdown("""
     <style>
     /* 全体のフォント設定 */
@@ -14,13 +14,25 @@ st.markdown("""
         font-family: 'Hiragino Maru Gothic ProN', 'Comic Sans MS', sans-serif !important;
     }
     
-    /* プレイエリアの枠（1つに統合してスッキリ） */
+    /* プレイエリアの枠 */
     div[data-testid="stVerticalBlockBorderWrapper"] {
         background-color: #FFFFE0 !important;
         border: 5px solid #FFD700 !important;
         border-radius: 20px !important;
-        padding: 15px 20px !important; /* 余白を減らして詰める */
+        padding: 15px 20px !important;
         box-shadow: 0 5px 15px rgba(0,0,0,0.05) !important;
+    }
+    
+    /* レベルアップ時のポップアップ枠 */
+    .levelup-box {
+        background-color: #FFF0F5;
+        border: 6px solid #FF69B4;
+        border-radius: 30px;
+        padding: 40px;
+        text-align: center;
+        box-shadow: 0 15px 25px rgba(0,0,0,0.15);
+        margin-top: 30px;
+        margin-bottom: 30px;
     }
     
     /* ふりがな（ルビ）のでか文字化 */
@@ -35,7 +47,7 @@ st.markdown("""
         border-radius: 15px !important;
         font-size: 18px !important;
         font-weight: bold !important;
-        padding: 5px 10px !important; /* 上下パディングを削って高さを減らす */
+        padding: 5px 10px !important;
         min-height: 0px !important;
     }
     
@@ -92,6 +104,11 @@ if "last_audio_hash" not in st.session_state:
     st.session_state.last_audio_hash = None
 if "kids_feedback" not in st.session_state:
     st.session_state.kids_feedback = ""
+# ★追加：レベルアップ画面の制御フラグと、その時の音声を保持する変数
+if "pending_levelup" not in st.session_state:
+    st.session_state.pending_levelup = False
+if "last_user_spoken" not in st.session_state:
+    st.session_state.last_user_spoken = ""
 
 # ==========================================
 # ⚙️ おうちのひと用 設定＆セーブ・ロード
@@ -111,6 +128,7 @@ with st.expander("🔒 おうちのひとへ（せってい ＆ セーブ・ロ�
                 st.session_state.kids_data = save_data.get("kids_data", {})
                 st.session_state.last_audio_hash = None
                 st.session_state.kids_feedback = ""
+                st.session_state.pending_levelup = False
                 
                 history_data = save_data.get("history", [])
                 formatted_history = []
@@ -153,15 +171,16 @@ with st.expander("🔒 おうちのひとへ（せってい ＆ セーブ・ロ�
         st.session_state.kids_level = 1
         st.session_state.last_audio_hash = None
         st.session_state.kids_feedback = ""
+        st.session_state.pending_levelup = False
         st.session_state.kids_state = "playing"
         
+        # ★毎ターンの褒め（praise）を削除したスッキリ版のプロンプト
         kids_instruction = f"""
-        あなたは、日本の子供に英語を教える、超絶優しくて明るい英語の先生です。
+        あなたは、日本の子供に英語を教える優しい先生です。
         シチュエーション: {st.session_state.final_sit}
         子供の名前: {st.session_state.child_name}
 
-        【厳守する出力フォーマット】必ずXMLタグのみで出力。
-        <praise>（子供をひらがなで大げさに褒める言葉）</praise>
+        【厳守する出力フォーマット】必ず以下のXMLタグのみで出力してください。
         <ai_en>（あなたが子供に投げかける英語の質問。1文のみ）</ai_en>
         <ai_ja>（上の英語のひらがな訳）</ai_ja>
         <ai_ruby>（上の英語に「Word(カタカナ)」でルビを振ったもの。例: What(ホワット) is(イズ) it?(イット)）</ai_ruby>
@@ -177,7 +196,6 @@ with st.expander("🔒 おうちのひとへ（せってい ＆ セーブ・ロ�
                 res = st.session_state.kids_chat.send_message(f"ゲームスタート。レベル1の超簡単な質問をしてください。")
                 
                 st.session_state.kids_data = {
-                    "praise": extract_tag(res.text, "praise"),
                     "ai_en": extract_tag(res.text, "ai_en"),
                     "ai_ja": extract_tag(res.text, "ai_ja"),
                     "ai_ruby": extract_tag(res.text, "ai_ruby"),
@@ -189,7 +207,7 @@ with st.expander("🔒 おうちのひとへ（せってい ＆ セーブ・ロ�
             except Exception as e:
                 st.error("エラーが おきたよ。もういちど おしてね！")
 
-    # セーブ機能（プレイ中のみ表示）
+    # セーブ機能
     if st.session_state.kids_state == "playing":
         st.markdown("---")
         st.markdown("### 💾 いまの データをセーブする")
@@ -218,20 +236,71 @@ with st.expander("🔒 おうちのひとへ（せってい ＆ セーブ・ロ�
         )
 
 # ==========================================
-# 🎮 レッスン（あそぶ）エリア【省スペース版】
+# 🎁 レベルアップ時の専用ポップアップ画面
+# ==========================================
+if st.session_state.kids_state == "playing" and st.session_state.get("pending_levelup"):
+    st.balloons()
+    st.markdown('<div class="levelup-box">', unsafe_allow_html=True)
+    st.markdown("<h2 style='color: #FF6B6B;'>🎉 よく がんばったね！</h2>", unsafe_allow_html=True)
+    st.markdown("<h3>ほしが ５つ あつまったよ。<br>つぎは どうする？</h3>", unsafe_allow_html=True)
+    
+    st.write("")
+    col_up, col_same = st.columns(2)
+    with col_up:
+        if st.button("⬆️ つぎの レベルに いく！", use_container_width=True):
+            with st.spinner("つぎの おはなし を よういしているよ..."):
+                st.session_state.kids_level += 1
+                st.session_state.pending_levelup = False
+                st.session_state.kids_stamps = 0 # 星をリセット
+                
+                prompt_msg = f"子供は「{st.session_state.last_user_spoken}」と言いました。\n【重要】レベルが{st.session_state.kids_level}に上がりました。さっきより少しだけ難しい（使う単語が多い）質問をして、場面を次に進めてください。"
+                next_res = st.session_state.kids_chat.send_message(prompt_msg)
+                
+                st.session_state.kids_data = {
+                    "ai_en": extract_tag(next_res.text, "ai_en"),
+                    "ai_ja": extract_tag(next_res.text, "ai_ja"),
+                    "ai_ruby": extract_tag(next_res.text, "ai_ruby"),
+                    "hint_en": extract_tag(next_res.text, "hint_en"),
+                    "hint_ja": extract_tag(next_res.text, "hint_ja"),
+                    "hint_ruby": extract_tag(next_res.text, "hint_ruby"),
+                }
+                st.rerun()
+
+    with col_same:
+        if st.button("🔄 おなじ レベルを もういっかい！", use_container_width=True):
+            with st.spinner("つぎの おはなし を よういしているよ..."):
+                st.session_state.pending_levelup = False
+                st.session_state.kids_stamps = 0 # 星をリセット
+                
+                prompt_msg = f"子供は「{st.session_state.last_user_spoken}」と言いました。\n【重要】レベルは維持します。絶対に直近と同じ質問や回答パターンにならないよう、物語を進行させてください。"
+                next_res = st.session_state.kids_chat.send_message(prompt_msg)
+                
+                st.session_state.kids_data = {
+                    "ai_en": extract_tag(next_res.text, "ai_en"),
+                    "ai_ja": extract_tag(next_res.text, "ai_ja"),
+                    "ai_ruby": extract_tag(next_res.text, "ai_ruby"),
+                    "hint_en": extract_tag(next_res.text, "hint_en"),
+                    "hint_ja": extract_tag(next_res.text, "hint_ja"),
+                    "hint_ruby": extract_tag(next_res.text, "hint_ruby"),
+                }
+                st.rerun()
+                
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.stop() # ここでプログラムを止めることで、通常のプレイ画面を完全に隠します
+
+
+# ==========================================
+# 🎮 レッスン（あそぶ）エリア【通常プレイ画面】
 # ==========================================
 if st.session_state.kids_state == "playing" and st.session_state.kids_data:
     data = st.session_state.kids_data
     
-    # 画面上部：レベルと星、そして褒め言葉をコンパクトに配置
+    # 画面上部：レベルと星
     col_level, col_stamp = st.columns([1, 1])
     with col_level:
         st.write(f"**🚩 レベル: {st.session_state.kids_level}**")
     with col_stamp:
         st.write(f"**👑 ほし: {'⭐' * st.session_state.kids_stamps}**")
-        
-    if data["praise"]:
-        st.success(f"🎉 **{data['praise']}**")
         
     # 🌟 紙芝居エリア（1つの枠にすべてを統合）
     with st.container(border=True):
@@ -290,7 +359,6 @@ if st.session_state.kids_state == "playing" and st.session_state.kids_data:
     # 🎤 操作パネル（マイクと各種ボタン）
     # ==========================================
     st.write("🎤 **マイクを おして えいご を いってみてね！**")
-    # label_visibility="collapsed" でマイク上の文字を消してスペース節約
     kids_audio = st.audio_input("マイク", key=f"kids_mic_{st.session_state.kids_stamps}", label_visibility="collapsed")
     
     # 録音された場合のアクション
@@ -315,13 +383,14 @@ if st.session_state.kids_state == "playing" and st.session_state.kids_data:
                         res = transcriber.generate_content([{"mime_type": "audio/wav", "data": audio_bytes}, "英語を文字起こししてください。文字のみ出力。"])
                         user_spoken = res.text.strip() if res.parts else "（がんばって こえ を だしたよ！）"
                         
+                        # ★簡潔でひらがなメインのAI判定
                         judge_prompt = f"""
                         お手本:「{data['hint_en']}」
                         子供の発音:「{user_spoken}」
                         【絶対ルール】
                         相手は英語を始めたばかりの6歳の子供です。
-                        発音が間違っていても絶対に指摘せず、「〇〇っていえたね！えらい！」と全力で肯定して褒めてください。
-                        出力はひらがなとカタカナのみ、1〜2文でお願いします。
+                        発音が間違っていても絶対に指摘せず、「よくいえたね！」や「がんばったね！」など、簡潔にひらがなとカタカナのみで短く肯定してください。
+                        出力は1文のみでお願いします。
                         """
                         judge_model = genai.GenerativeModel("gemini-2.5-flash-lite")
                         judge_res = judge_model.generate_content(judge_prompt)
@@ -342,30 +411,25 @@ if st.session_state.kids_state == "playing" and st.session_state.kids_data:
                         st.session_state.kids_feedback = ""
                         st.session_state.last_audio_hash = None
                         
-                        is_levelup = False
+                        # ★レベルアップ判定（5回ごとにポップアップを呼ぶフラグを立てる）
                         if st.session_state.kids_stamps > 0 and st.session_state.kids_stamps % 5 == 0:
-                            st.session_state.kids_level += 1
-                            is_levelup = True
-                            st.balloons()
-                        
-                        prompt_msg = f"子供は「{user_spoken}」と言いました。\n"
-                        if is_levelup:
-                            prompt_msg += f"【重要】星が5個集まり、レベル{st.session_state.kids_level}に上がりました！大げさに褒めちぎり、さっきより少しだけ難しい質問をして、場面を次に進めてください。"
+                            st.session_state.pending_levelup = True
+                            st.session_state.last_user_spoken = user_spoken
+                            st.rerun() # ここでポップアップ画面へ切り替わります
                         else:
-                            prompt_msg += f"【重要】めちゃくちゃ褒めて、次の展開の質問を出してください。絶対に直近と同じ質問や回答パターンにならないよう、物語を進行させてください。"
-
-                        next_res = st.session_state.kids_chat.send_message(prompt_msg)
-                        
-                        st.session_state.kids_data = {
-                            "praise": extract_tag(next_res.text, "praise"),
-                            "ai_en": extract_tag(next_res.text, "ai_en"),
-                            "ai_ja": extract_tag(next_res.text, "ai_ja"),
-                            "ai_ruby": extract_tag(next_res.text, "ai_ruby"),
-                            "hint_en": extract_tag(next_res.text, "hint_en"),
-                            "hint_ja": extract_tag(next_res.text, "hint_ja"),
-                            "hint_ruby": extract_tag(next_res.text, "hint_ruby"),
-                        }
-                        st.rerun()
+                            # 通常の次の問題へ
+                            prompt_msg = f"子供は「{user_spoken}」と言いました。\n【重要】次の展開の質問を出してください。絶対に直近と同じ質問や回答パターンにならないよう、物語を進行させてください。"
+                            next_res = st.session_state.kids_chat.send_message(prompt_msg)
+                            
+                            st.session_state.kids_data = {
+                                "ai_en": extract_tag(next_res.text, "ai_en"),
+                                "ai_ja": extract_tag(next_res.text, "ai_ja"),
+                                "ai_ruby": extract_tag(next_res.text, "ai_ruby"),
+                                "hint_en": extract_tag(next_res.text, "hint_en"),
+                                "hint_ja": extract_tag(next_res.text, "hint_ja"),
+                                "hint_ruby": extract_tag(next_res.text, "hint_ruby"),
+                            }
+                            st.rerun()
                     except Exception:
                         st.error("エラーがおきたよ。もういっかい おしてみて！")
 
@@ -378,9 +442,8 @@ if st.session_state.kids_state == "playing" and st.session_state.kids_data:
                 try:
                     st.session_state.kids_feedback = ""
                     st.session_state.last_audio_hash = None
-                    next_res = st.session_state.kids_chat.send_message("子供が難しがってパスしました。「だいじょうぶだよ！」と優しく励まして、さっきとは違う展開の質問をしてください。")
+                    next_res = st.session_state.kids_chat.send_message("子供が難しがってパスしました。「だいじょうぶだよ！」と短くひらがなで優しく励まして、さっきとは違う展開の質問をしてください。")
                     st.session_state.kids_data = {
-                        "praise": extract_tag(next_res.text, "praise"),
                         "ai_en": extract_tag(next_res.text, "ai_en"),
                         "ai_ja": extract_tag(next_res.text, "ai_ja"),
                         "ai_ruby": extract_tag(next_res.text, "ai_ruby"),
@@ -400,9 +463,8 @@ if st.session_state.kids_state == "playing" and st.session_state.kids_data:
                     try:
                         st.session_state.kids_feedback = ""
                         st.session_state.last_audio_hash = None
-                        next_res = st.session_state.kids_chat.send_message(f"子供が難しがったため、レベルを{st.session_state.kids_level}に下げました。うんと簡単な短い文にして、優しく励ましてください。")
+                        next_res = st.session_state.kids_chat.send_message(f"子供が難しがったため、レベルを{st.session_state.kids_level}に下げました。うんと簡単な短い文にして、ひらがなで短く優しく励ましてください。")
                         st.session_state.kids_data = {
-                            "praise": extract_tag(next_res.text, "praise"),
                             "ai_en": extract_tag(next_res.text, "ai_en"),
                             "ai_ja": extract_tag(next_res.text, "ai_ja"),
                             "ai_ruby": extract_tag(next_res.text, "ai_ruby"),
