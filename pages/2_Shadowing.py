@@ -59,11 +59,13 @@ with setup_tab1:
                     script += q + "\n\n"
         if script:
             st.session_state.shadowing_script = script.strip()
+            # 別の教材を読み込んだ場合は分割チャンクをリセット
+            st.session_state.pop("shadowing_chunks", None) 
             st.success("読み込み完了！下へ進んでください。")
         else:
             st.warning("履歴が見つかりません。先にロールプレイモードで会話してください。")
 
-# タブ2：AI自動生成
+# タブ2：AI自動生成（★改善：名前、長さの追加とプレースホルダー禁止）
 with setup_tab2:
     level = st.selectbox("難易度（対象レベル）", [
         "1: 幼児・超初心者（短い挨拶、簡単な単語）",
@@ -72,21 +74,45 @@ with setup_tab2:
         "4: 高校生・英検2級（やや長めの文）",
         "5: 上級・英検準1級〜（複雑な構文）"
     ])
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        script_length = st.selectbox("文章のボリューム", ["短め（3〜4文）", "標準（5〜7文）", "長め（8〜10文）"])
+    with col2:
+        user_name = st.text_input("あなたの名前（AIが呼びかけに使います）", value="masa")
+        
     sit = st.text_input("シチュエーション", "例: 空港での入国審査")
     
     if st.button("AIにスクリプトを作ってもらう"):
         with st.spinner("台本を作成中..."):
-            ai = genai.GenerativeModel("gemini-2.5-flash-lite")
-            prompt = f"シャドーイング用の英語スクリプトを作成してください。レベル:{level}, 状況:{sit}。出力は英語のセリフのみとし、数行程度にしてください。"
+            ai = genai.GenerativeModel("gemini-2.5-flash")
+            prompt = f"""
+            シャドーイング用の英語スクリプトを作成してください。
+            レベル: {level}
+            状況: {sit}
+            長さ: {script_length}
+            学習者の名前: {user_name}
+
+            【厳守事項】
+            1. [Your Name] や [City] のようなプレースホルダー（穴埋め表記）は**絶対に**使用しないでください。
+            2. 名前を呼ぶ必要がある場合は「{user_name}」を使用してください。
+            3. 地名、職業、その他固有名詞が必要な場合は、AI自身が自然な架空の名称を考えて、具体的な単語として出力してください。
+            4. 出力は英語のセリフのみとしてください（日本語の解説や前置きは一切不要）。
+            """
             st.session_state.shadowing_script = ai.generate_content(prompt).text
+            st.session_state.pop("shadowing_chunks", None) # 分割チャンクをリセット
             st.success("生成完了！下へ進んでください。")
 
 # タブ3：フリー入力
 with setup_tab3:
     manual_text = st.text_area("練習したい英文を貼り付けてください", height=150)
     if st.button("この英文を使う"):
-        st.session_state.shadowing_script = manual_text.strip()
-        st.success("セット完了！下へ進んでください。")
+        if manual_text.strip():
+            st.session_state.shadowing_script = manual_text.strip()
+            st.session_state.pop("shadowing_chunks", None) # 分割チャンクをリセット
+            st.success("セット完了！下へ進んでください。")
+        else:
+            st.warning("英文を入力してください。")
 
 st.markdown("---")
 
@@ -96,30 +122,55 @@ st.markdown("---")
 st.header("🏋️ 2. トレーニング")
 
 if st.session_state.shadowing_script:
-    if st.button("▶️ 現在のスクリプトを「1文ずつ」に分割して練習開始！", use_container_width=True):
-        with st.spinner("AIが和訳と分割を行っています... (※ここで1回だけ通信します)"):
-            ai = genai.GenerativeModel("gemini-2.5-flash")
-            split_prompt = f"""
-            以下の英文を、意味のまとまり（または1文）ごとに分割し、それぞれに日本語訳をつけてください。
-            【出力フォーマット（厳守）】
-            英語 || 日本語訳
-            
-            英文:
-            {st.session_state.shadowing_script}
-            """
-            try:
-                res = ai.generate_content(split_prompt).text
-                chunks = []
-                for line in res.split('\n'):
-                    if '||' in line:
-                        en, ja = line.split('||', 1)
-                        chunks.append({"en": en.strip(), "ja": ja.strip()})
-                st.session_state.shadowing_chunks = chunks
-            except Exception:
-                st.error("分割に失敗しました。もう一度試してください。")
+    # ★改善：まずは全文を表示して通しで再生する機能
+    st.write("📖 **現在のスクリプト（全文）**")
+    st.info(st.session_state.shadowing_script)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # 全文再生ボタン
+        if st.button("🔊 全文のお手本を通しで聞く", use_container_width=True):
+            with st.spinner("音声を生成中..."):
+                speak_text = clean_text_for_tts(st.session_state.shadowing_script)
+                try:
+                    tts = gTTS(text=speak_text, lang='en')
+                    fp = io.BytesIO()
+                    tts.write_to_fp(fp)
+                    fp.seek(0)
+                    st.audio(fp, format="audio/mp3", autoplay=True)
+                except Exception:
+                    st.error("音声の生成に失敗しました。")
+
+    with col2:
+        # チャンク分割ボタン
+        if st.button("✂️ 1文ずつに分割して特訓する", type="primary", use_container_width=True):
+            with st.spinner("AIが和訳と分割を行っています... (※ここで1回だけ通信します)"):
+                ai = genai.GenerativeModel("gemini-2.5-flash")
+                split_prompt = f"""
+                以下の英文を、意味のまとまり（または1文ごと）に分割し、それぞれに日本語訳をつけてください。
+                【出力フォーマット（厳守）】
+                英語 || 日本語訳
+                
+                英文:
+                {st.session_state.shadowing_script}
+                """
+                try:
+                    res = ai.generate_content(split_prompt).text
+                    chunks = []
+                    for line in res.split('\n'):
+                        if '||' in line:
+                            en, ja = line.split('||', 1)
+                            chunks.append({"en": en.strip(), "ja": ja.strip()})
+                    st.session_state.shadowing_chunks = chunks
+                except Exception:
+                    st.error("分割に失敗しました。もう一度試してください。")
+
+    st.markdown("---")
 
 # 分割されたチャンクの表示と練習UI
 if "shadowing_chunks" in st.session_state and st.session_state.shadowing_chunks:
+    st.write("🎯 **1文ずつの特訓＆AI判定**")
     display_mode = st.radio("👀 画面表示モード", ["英語 ＋ 和訳", "英語のみ", "ブラインド（文字を隠す）"], horizontal=True)
 
     for i, chunk in enumerate(st.session_state.shadowing_chunks):
