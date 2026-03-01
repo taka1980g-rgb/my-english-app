@@ -16,12 +16,7 @@ st.markdown("""
         padding-bottom: 2rem !important;
     }
     
-    /* 全体のフォント設定 */
-    html, body, [class*="css"] {
-        font-family: 'Hiragino Maru Gothic ProN', 'Comic Sans MS', sans-serif !important;
-    }
-    
-    /* プレイエリアの枠（パディングを極限まで削ってスリムに） */
+    /* プレイエリアの枠 */
     div[data-testid="stVerticalBlockBorderWrapper"] {
         background-color: #FFFFE0 !important;
         border: 4px solid #FFD700 !important;
@@ -30,7 +25,7 @@ st.markdown("""
         box-shadow: 0 5px 15px rgba(0,0,0,0.05) !important;
     }
     
-    /* 英語テキスト全体を包むコンテナ（少し小さく24pxに） */
+    /* 英語テキスト全体を包むコンテナ */
     .english-text-container {
         font-size: 24px !important;
         font-weight: normal !important; 
@@ -166,7 +161,6 @@ with st.sidebar:
     st.write("※あそぶときは、このメニューをとじてね！")
     st.markdown("---")
     
-    # 1. 遊びかたの設定
     st.markdown("### 👀 えいごの みえかた")
     st.session_state.kids_display_mode = st.radio(
         "表示モード", 
@@ -176,7 +170,6 @@ with st.sidebar:
     )
     st.markdown("---")
 
-    # 2. 新しく始める
     st.markdown("### ✨ あたらしく あそぶ")
     child_name = st.text_input("👦👧 おなまえ", value=st.session_state.child_name)
     selected_sit_label = st.selectbox("🎬 おはなし", list(sit_options.keys()))
@@ -220,7 +213,6 @@ with st.sidebar:
             except Exception:
                 st.error("エラーがおきました。")
 
-    # 3. セーブ＆ロード
     st.markdown("---")
     st.markdown("### 💾 セーブ ＆ ロード")
     uploaded_save = st.file_uploader("データのよみこみ(.json)", type=["json"])
@@ -256,14 +248,12 @@ with st.sidebar:
         today_str = datetime.now().strftime("%Y-%m-%d")
         st.download_button("💾 データをセーブ", data=json.dumps(save_data, ensure_ascii=False, indent=2), file_name=f"{today_str}_kids_save.json", mime="application/json", use_container_width=True)
 
-
 # ==========================================
 # 🌟 メイン画面（セットアップ待ち）
 # ==========================================
 if st.session_state.kids_state == "setup":
     st.info("👈 ひだりの メニュー（＞ボタン）をひらいて、あたらしく おはなし を はじめてね！")
     st.stop()
-
 
 # ==========================================
 # 🎁 レベルアップ時の専用ポップアップ画面
@@ -306,20 +296,32 @@ if st.session_state.get("pending_levelup"):
         st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
-
 # ==========================================
 # 🎮 レッスン（あそぶ）エリア【縦型スリム版】
 # ==========================================
 data = st.session_state.kids_data
 mode = st.session_state.kids_display_mode
 
-# 🌟 ステータス表示（上部にコンパクトに）
 st.markdown(f"<h4 style='text-align: left; color: #FF4500; margin-top:0;'>🚩 レベル: {st.session_state.kids_level} ｜ 👑 ほし: {'⭐' * st.session_state.kids_stamps}</h4>", unsafe_allow_html=True)
 
-# 🌟 紙芝居エリア（1つの枠にすべてを統合、余白を削る）
+# 🌟 紙芝居エリア
 with st.container(border=True):
-    # --- 前半：AIの質問 ---
-    st.write("🤖 **えいご の しつもん**")
+    
+    # ★修正：質問テキストと音声プレイヤーを横に並べる
+    col_q_title, col_q_audio = st.columns([1.5, 1], vertical_alignment="center")
+    with col_q_title:
+        st.write("🤖 **えいご の しつもん**")
+    with col_q_audio:
+        speak_text = clean_text_for_tts(data["ai_en"])
+        try:
+            tts = gTTS(text=speak_text, lang='en')
+            fp = io.BytesIO()
+            tts.write_to_fp(fp)
+            fp.seek(0)
+            st.audio(fp, format="audio/mp3", autoplay=True)
+        except Exception:
+            pass
+
     if mode == "🗣️ カタカナも":
         st.markdown(f'<div class="english-text-container">{apply_ruby_html(data["ai_ruby"])}</div>', unsafe_allow_html=True)
         st.markdown(f'<div class="ja-text">🇯🇵 {data["ai_ja"]}</div>', unsafe_allow_html=True)
@@ -328,50 +330,43 @@ with st.container(border=True):
         st.markdown(f'<div class="ja-text">🇯🇵 {data["ai_ja"]}</div>', unsafe_allow_html=True)
     else:
         st.markdown(f'<div class="english-text-container">{data["ai_en"]}</div>', unsafe_allow_html=True)
-        
-    speak_text = clean_text_for_tts(data["ai_en"])
-    try:
-        tts = gTTS(text=speak_text, lang='en')
-        fp = io.BytesIO()
-        tts.write_to_fp(fp)
-        fp.seek(0)
-        st.audio(fp, format="audio/mp3", autoplay=True)
-    except Exception:
-        pass
 
     st.markdown("<hr style='border-top: 2px dashed #FFD700;'>", unsafe_allow_html=True)
 
-    # --- 後半：こたえのヒント ---
+    # ★修正：ヒントエリアはテキストのみ中央に表示
     st.write("💡 **こうやって こたえてみよう！**")
-    col_hint_txt, col_hint_btn = st.columns([4, 1]) 
-    with col_hint_txt:
-        if mode == "🗣️ カタカナも":
-            st.markdown(f'<div class="english-text-container">{apply_ruby_html(data["hint_ruby"])}</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="ja-text">🇯🇵 {data["hint_ja"]}</div>', unsafe_allow_html=True)
-        elif mode == "🇯🇵 にほんごも":
-            st.markdown(f'<div class="english-text-container">{data["hint_en"]}</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="ja-text">🇯🇵 {data["hint_ja"]}</div>', unsafe_allow_html=True)
-        else:
-            st.markdown(f'<div class="english-text-container">{data["hint_en"]}</div>', unsafe_allow_html=True)
-            
-    with col_hint_btn:
-        st.write("") # 位置合わせ
-        if st.button("🔊 きく", key="btn_hint_audio", use_container_width=True):
-            speak_text_hint = clean_text_for_tts(data["hint_en"])
-            try:
-                tts_h = gTTS(text=speak_text_hint, lang='en')
-                fp_h = io.BytesIO()
-                tts_h.write_to_fp(fp_h)
-                fp_h.seek(0)
-                st.audio(fp_h, format="audio/mp3", autoplay=True)
-            except Exception:
-                pass
+    if mode == "🗣️ カタカナも":
+        st.markdown(f'<div class="english-text-container">{apply_ruby_html(data["hint_ruby"])}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="ja-text">🇯🇵 {data["hint_ja"]}</div>', unsafe_allow_html=True)
+    elif mode == "🇯🇵 にほんごも":
+        st.markdown(f'<div class="english-text-container">{data["hint_en"]}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="ja-text">🇯🇵 {data["hint_ja"]}</div>', unsafe_allow_html=True)
+    else:
+        st.markdown(f'<div class="english-text-container">{data["hint_en"]}</div>', unsafe_allow_html=True)
 
 # ==========================================
-# 🎤 操作パネル（マイク）
+# 🎤 操作パネル（おてほんボタン ＋ マイク）
 # ==========================================
-kids_audio = st.audio_input("マイク", key=f"kids_mic_{st.session_state.kids_stamps}", label_visibility="collapsed")
+st.write("🎤 **マイクを おして えいご を いってみてね！**")
 
+# ★修正：マイクの左に「おてほん」ボタンを横並びで配置
+col_play_hint, col_mic = st.columns([1, 2], vertical_alignment="bottom")
+
+with col_play_hint:
+    if st.button("🔊 おてほん\nを きく", key="btn_hint_audio", use_container_width=True):
+        speak_text_hint = clean_text_for_tts(data["hint_en"])
+        try:
+            tts_h = gTTS(text=speak_text_hint, lang='en')
+            fp_h = io.BytesIO()
+            tts_h.write_to_fp(fp_h)
+            fp_h.seek(0)
+            st.audio(fp_h, format="audio/mp3", autoplay=True)
+        except Exception:
+            pass
+
+with col_mic:
+    kids_audio = st.audio_input("マイク", key=f"kids_mic_{st.session_state.kids_stamps}", label_visibility="collapsed")
+    
 if kids_audio:
     audio_bytes = kids_audio.getvalue()
     current_audio_hash = hash(audio_bytes)
