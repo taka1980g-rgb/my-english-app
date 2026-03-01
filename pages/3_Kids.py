@@ -75,8 +75,13 @@ st.markdown("""
         margin-bottom: 10px;
     }
     
+    /* 復習エリアの文字サイズ */
+    .review-text { font-size: 20px !important; margin-bottom: 0px !important;}
+    .review-text ruby { font-size: 20px !important; margin-right: 6px !important;}
+    .review-text rt { font-size: 10px !important;}
+    
     /* 水平線のスキマ削減 */
-    hr { margin: 10px 0 !important; }
+    hr { margin: 10px 0 !important; border-top: 2px dashed #ccc !important;}
     </style>
     """, unsafe_allow_html=True)
 
@@ -117,9 +122,11 @@ def get_hint_length_rule(level):
 
 # === 💾 データの初期化 ===
 if "kids_state" not in st.session_state:
-    st.session_state.kids_state = "setup"
+    st.session_state.kids_state = "setup" # setup, playing, finished
 if "kids_stamps" not in st.session_state:
     st.session_state.kids_stamps = 0
+if "kids_total_stamps" not in st.session_state: # ★追加：累計スタンプ
+    st.session_state.kids_total_stamps = 0
 if "kids_level" not in st.session_state:
     st.session_state.kids_level = 1
 if "kids_data" not in st.session_state:
@@ -138,6 +145,8 @@ if "last_user_spoken" not in st.session_state:
     st.session_state.last_user_spoken = ""
 if "kids_display_mode" not in st.session_state:
     st.session_state.kids_display_mode = "🗣️ カタカナも"
+if "kids_history_log" not in st.session_state: # ★追加：会話履歴の保存用リスト
+    st.session_state.kids_history_log = []
 
 sit_options = {
     "🍔 ハンバーガーやさん で おかいもの": "You are a friendly staff at a hamburger shop.",
@@ -183,20 +192,22 @@ with st.sidebar:
         st.session_state.child_name = child_name
         st.session_state.final_sit = final_sit_new
         st.session_state.kids_stamps = 0
+        st.session_state.kids_total_stamps = 0
         st.session_state.kids_level = 1
         st.session_state.last_audio_hash = None
         st.session_state.kids_feedback = ""
         st.session_state.pending_levelup = False
+        st.session_state.kids_history_log = [] # 履歴リセット
         st.session_state.kids_state = "playing"
         
         kids_instruction = f"""
-        あなたは、日本の子供に英語を教える優しい先生です。シチュエーション: {st.session_state.final_sit}、子供の名前: {st.session_state.child_name}
+        あなたは日本の子供に英語を教える優しい先生です。シチュエーション: {st.session_state.final_sit}、子供の名前: {st.session_state.child_name}
         【厳守フォーマット】XMLタグのみ。
         <ai_en>（あなたが子供に投げかける英語の質問。1文のみ）</ai_en>
-        <ai_ja>（上の英語の【日本語の意味】をひらがなで書いたもの）</ai_ja>
+        <ai_ja>（上の英語の【日本語の意味】をひらがなで）</ai_ja>
         <ai_ruby>（上の英語に「Word(カタカナ)」でルビを振ったもの）</ai_ruby>
         <hint_en>（子供が真似して答えるための英語の答え）</hint_en>
-        <hint_ja>（上の答えの【日本語の意味】をひらがなで書いたもの）</hint_ja>
+        <hint_ja>（上の答えの【日本語の意味】をひらがなで）</hint_ja>
         <hint_ruby>（上の答えのルビ付き）</hint_ruby>
         """
         with st.spinner("じゅんびちゅう..."):
@@ -223,8 +234,10 @@ with st.sidebar:
                 st.session_state.child_name = save_data.get("child_name", "おともだち")
                 st.session_state.final_sit = save_data.get("final_sit", "")
                 st.session_state.kids_stamps = save_data.get("kids_stamps", 0)
+                st.session_state.kids_total_stamps = save_data.get("kids_total_stamps", 0)
                 st.session_state.kids_level = save_data.get("kids_level", 1)
                 st.session_state.kids_data = save_data.get("kids_data", {})
+                st.session_state.kids_history_log = save_data.get("kids_history_log", [])
                 st.session_state.last_audio_hash = None
                 st.session_state.kids_feedback = ""
                 st.session_state.pending_levelup = False
@@ -238,12 +251,13 @@ with st.sidebar:
             except Exception:
                 st.error("エラーがおきました。")
                 
-    if st.session_state.kids_state == "playing":
-        history_to_save = [{"role": msg.role, "parts": [p.text for p in msg.parts]} for msg in st.session_state.kids_chat.history]
+    if st.session_state.kids_state in ["playing", "finished"]:
+        history_to_save = [{"role": msg.role, "parts": [p.text for p in msg.parts]} for msg in st.session_state.kids_chat.history] if "kids_chat" in st.session_state else []
         save_data = {
             "child_name": st.session_state.child_name, "final_sit": st.session_state.final_sit,
-            "kids_stamps": st.session_state.kids_stamps, "kids_level": st.session_state.kids_level,
-            "kids_data": st.session_state.kids_data, "history": history_to_save
+            "kids_stamps": st.session_state.kids_stamps, "kids_total_stamps": st.session_state.kids_total_stamps,
+            "kids_level": st.session_state.kids_level, "kids_data": st.session_state.kids_data, 
+            "kids_history_log": st.session_state.kids_history_log, "history": history_to_save
         }
         today_str = datetime.now().strftime("%Y-%m-%d")
         st.download_button("💾 データをセーブ", data=json.dumps(save_data, ensure_ascii=False, indent=2), file_name=f"{today_str}_kids_save.json", mime="application/json", use_container_width=True)
@@ -256,15 +270,80 @@ if st.session_state.kids_state == "setup":
     st.stop()
 
 # ==========================================
-# 🎁 レベルアップ時の専用ポップアップ画面
+# 🏆 終了画面（今日のまとめ）
+# ==========================================
+if st.session_state.kids_state == "finished":
+    st.balloons()
+    st.markdown("<h1 style='text-align:center; color:#FF6B6B;'>🎉 きょうの べんきょう は おわり！</h1>", unsafe_allow_html=True)
+    st.markdown(f"<h3 style='text-align:center;'>がんばって 【{st.session_state.kids_total_stamps}かい】も えいご を はなしたね！すごーい！✨</h3>", unsafe_allow_html=True)
+    
+    st.markdown("---")
+    st.markdown("### 📖 きょう はなした えいご の まとめ")
+    
+    # 履歴を全件表示
+    if not st.session_state.kids_history_log:
+        st.write("まだ おはなし していないみたい！")
+    else:
+        for i, turn in enumerate(st.session_state.kids_history_log):
+            with st.container(border=True):
+                st.markdown(f"<div class='review-text'>🤖 Q: {apply_ruby_html(turn['q_ruby'])}</div>", unsafe_allow_html=True)
+                st.caption(f"🇯🇵 {turn['q_ja']}")
+                st.markdown(f"<div class='review-text' style='color:#1E90FF;'>🗣️ A: {apply_ruby_html(turn['a_ruby'])}</div>", unsafe_allow_html=True)
+                st.caption(f"🇯🇵 {turn['a_ja']}")
+    
+    st.write("")
+    if st.button("🏠 はじめから あそぶ", type="primary", use_container_width=True):
+        st.session_state.kids_state = "setup"
+        st.rerun()
+    st.stop()
+
+# ==========================================
+# 🎁 レベルアップ時の専用ポップアップ画面（復習つき！）
 # ==========================================
 if st.session_state.get("pending_levelup"):
     st.balloons()
     with st.container():
         st.markdown("<div class='levelup-box'>", unsafe_allow_html=True)
         st.markdown("<h2 style='text-align:center; color: #FF6B6B;'>🎉 よく がんばったね！</h2>", unsafe_allow_html=True)
-        st.markdown("<h3 style='text-align:center;'>ほしが ５つ あつまったよ。<br>つぎは どうする？</h3>", unsafe_allow_html=True)
+        st.markdown("<h4 style='text-align:center;'>ほしが ５つ あつまったよ！</h4>", unsafe_allow_html=True)
+        st.markdown("<hr>", unsafe_allow_html=True)
+        
+        # ★追加：復習エリア
+        st.markdown("<h3 style='text-align:left;'>📖 いま やった おはなし の ふくしゅう</h3>", unsafe_allow_html=True)
+        
+        # 直近5件の履歴を取得
+        recent_history = st.session_state.kids_history_log[-5:] if len(st.session_state.kids_history_log) >= 5 else st.session_state.kids_history_log
+        
+        col_tog, col_play = st.columns([1, 1], vertical_alignment="center")
+        with col_tog:
+            show_translation = st.toggle("🇯🇵 にほんごの やく を みる", value=True)
+        with col_play:
+            if st.button("🔊 ぜんぶ とおして きく", use_container_width=True):
+                with st.spinner("おんせいを つくっているよ..."):
+                    try:
+                        # 5問分の英語を結合して一気に読み上げる
+                        full_text = ""
+                        for item in recent_history:
+                            full_text += f"{item['q_en']} {item['a_en']}. "
+                        tts_all = gTTS(text=clean_text_for_tts(full_text), lang='en')
+                        fp_all = io.BytesIO()
+                        tts_all.write_to_fp(fp_all)
+                        fp_all.seek(0)
+                        st.audio(fp_all, format="audio/mp3", autoplay=True)
+                    except Exception:
+                        st.error("おんせいの さくせいに しっぱいしました。")
+        
         st.write("")
+        # 復習テキストの表示
+        for i, turn in enumerate(recent_history):
+            st.markdown(f"<div class='review-text'>**Q{i+1}:** {apply_ruby_html(turn['q_ruby'])}</div>", unsafe_allow_html=True)
+            if show_translation: st.caption(f"🇯🇵 {turn['q_ja']}")
+            
+            st.markdown(f"<div class='review-text' style='color:#1E90FF;'>**A{i+1}:** {apply_ruby_html(turn['a_ruby'])}</div>", unsafe_allow_html=True)
+            if show_translation: st.caption(f"🇯🇵 {turn['a_ja']}")
+            st.markdown("<hr>", unsafe_allow_html=True)
+
+        st.markdown("<h3 style='text-align:center;'>つぎは どうする？</h3>", unsafe_allow_html=True)
         col_up, col_same = st.columns(2)
         with col_up:
             if st.button("⬆️ つぎの レベルに いく！", use_container_width=True):
@@ -273,7 +352,7 @@ if st.session_state.get("pending_levelup"):
                     st.session_state.pending_levelup = False
                     st.session_state.kids_stamps = 0 
                     hint_rule = get_hint_length_rule(st.session_state.kids_level)
-                    prompt_msg = f"子供は「{st.session_state.last_user_spoken}」と言いました。\n【重要】レベルが{st.session_state.kids_level}に上がりました。さっきより少しだけ難しい質問をして、場面を次に進めてください。\n子供のヒント（<hint_en>）は【{hint_rule}】で。"
+                    prompt_msg = f"子供は「{st.session_state.last_user_spoken}」と言いました。\n【重要】レベルが{st.session_state.kids_level}に上がりました。さっきより少しだけ難しい質問をして、場面を次に進めてください。\n子供のヒントは【{hint_rule}】で。"
                     next_res = st.session_state.kids_chat.send_message(prompt_msg)
                     st.session_state.kids_data = {
                         "ai_en": extract_tag(next_res.text, "ai_en"), "ai_ja": extract_tag(next_res.text, "ai_ja"), "ai_ruby": extract_tag(next_res.text, "ai_ruby"),
@@ -286,7 +365,7 @@ if st.session_state.get("pending_levelup"):
                     st.session_state.pending_levelup = False
                     st.session_state.kids_stamps = 0 
                     hint_rule = get_hint_length_rule(st.session_state.kids_level)
-                    prompt_msg = f"子供は「{st.session_state.last_user_spoken}」と言いました。\n【重要】レベルは維持します。絶対に直近と同じ質問や回答パターンにならないよう、物語を進行させてください。\n子供のヒント（<hint_en>）は【{hint_rule}】で。"
+                    prompt_msg = f"子供は「{st.session_state.last_user_spoken}」と言いました。\n【重要】レベルは維持します。絶対に直近と同じ質問や回答パターンにならないよう、物語を進行させてください。\n子供のヒントは【{hint_rule}】で。"
                     next_res = st.session_state.kids_chat.send_message(prompt_msg)
                     st.session_state.kids_data = {
                         "ai_en": extract_tag(next_res.text, "ai_en"), "ai_ja": extract_tag(next_res.text, "ai_ja"), "ai_ruby": extract_tag(next_res.text, "ai_ruby"),
@@ -296,8 +375,9 @@ if st.session_state.get("pending_levelup"):
         st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
+
 # ==========================================
-# 🎮 レッスン（あそぶ）エリア【縦型スリム版】
+# 🎮 レッスン（あそぶ）エリア【通常プレイ画面】
 # ==========================================
 data = st.session_state.kids_data
 mode = st.session_state.kids_display_mode
@@ -307,7 +387,6 @@ st.markdown(f"<h4 style='text-align: left; color: #FF4500; margin-top:0;'>🚩 �
 # 🌟 紙芝居エリア
 with st.container(border=True):
     
-    # ★修正：質問テキストと音声プレイヤーを横に並べる
     col_q_title, col_q_audio = st.columns([1.5, 1], vertical_alignment="center")
     with col_q_title:
         st.write("🤖 **えいご の しつもん**")
@@ -333,7 +412,6 @@ with st.container(border=True):
 
     st.markdown("<hr style='border-top: 2px dashed #FFD700;'>", unsafe_allow_html=True)
 
-    # ★修正：ヒントエリアはテキストのみ中央に表示
     st.write("💡 **こうやって こたえてみよう！**")
     if mode == "🗣️ カタカナも":
         st.markdown(f'<div class="english-text-container">{apply_ruby_html(data["hint_ruby"])}</div>', unsafe_allow_html=True)
@@ -348,8 +426,6 @@ with st.container(border=True):
 # 🎤 操作パネル（おてほんボタン ＋ マイク）
 # ==========================================
 st.write("🎤 **マイクを おして えいご を いってみてね！**")
-
-# ★修正：マイクの左に「おてほん」ボタンを横並びで配置
 col_play_hint, col_mic = st.columns([1, 2], vertical_alignment="bottom")
 
 with col_play_hint:
@@ -418,7 +494,15 @@ with col_b2:
                     res = transcriber.generate_content([{"mime_type": "audio/wav", "data": audio_bytes}, "英語を文字起こししてください。"])
                     user_spoken = res.text.strip() if res.parts else "（がんばってこえをだしたよ！）"
                     
+                    # ★追加：履歴を記録する
+                    turn_data = {
+                        "q_en": data["ai_en"], "q_ja": data["ai_ja"], "q_ruby": data["ai_ruby"],
+                        "a_en": data["hint_en"], "a_ja": data["hint_ja"], "a_ruby": data["hint_ruby"]
+                    }
+                    st.session_state.kids_history_log.append(turn_data)
+                    
                     st.session_state.kids_stamps += 1
+                    st.session_state.kids_total_stamps += 1 # 累計も増やす
                     st.session_state.kids_feedback = ""
                     st.session_state.last_audio_hash = None
                     
@@ -477,7 +561,7 @@ with col_b4:
             st.warning("これいじょう さげられないよ！")
 
 # ==========================================
-# 🎒 メインエリアでの「おはなし変更」機能
+# 🎒 メインエリア下部（おはなし変更 ＆ 終了ボタン）
 # ==========================================
 st.write("")
 with st.expander("🎒 べつの おはなし に かえる（レベルは そのまま）"):
@@ -511,3 +595,9 @@ with st.expander("🎒 べつの おはなし に かえる（レベルは そ�
                 st.rerun()
             except Exception:
                 st.error("エラーがおきました。")
+
+st.markdown("---")
+# ★追加：終了ボタン
+if st.button("🛑 きょうの べんきょう を おわる", type="secondary", use_container_width=True):
+    st.session_state.kids_state = "finished"
+    st.rerun()
