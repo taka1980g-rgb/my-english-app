@@ -38,6 +38,10 @@ def clean_text_for_tts(text):
 st.title("🎧 シャドーイング道場")
 st.write("お手本を聞いて、限界まで自力で練習！自信がついたらAIの厳格チェックに挑みましょう。")
 
+# ★追加：シャドーイングの判定履歴を保存するリスト
+if "shadowing_history" not in st.session_state:
+    st.session_state.shadowing_history = []
+
 # ==========================================
 # 1. 教材セットアップエリア
 # ==========================================
@@ -59,7 +63,9 @@ with setup_tab1:
                     script += q + "\n\n"
         if script:
             st.session_state.shadowing_script = script.strip()
-            st.session_state.pop("shadowing_chunks", None) 
+            st.session_state.pop("shadowing_chunks", None)
+            st.session_state.shadowing_history = [] # 履歴リセット
+            st.session_state.pop("shadowing_evaluation", None) # 評価リセット
             st.success("読み込み完了！下へ進んでください。")
         else:
             st.warning("履歴が見つかりません。先にロールプレイモードで会話してください。")
@@ -99,7 +105,9 @@ with setup_tab2:
             4. 出力は英語のセリフのみとしてください（日本語の解説や前置きは一切不要）。
             """
             st.session_state.shadowing_script = ai.generate_content(prompt).text
-            st.session_state.pop("shadowing_chunks", None) 
+            st.session_state.pop("shadowing_chunks", None)
+            st.session_state.shadowing_history = [] # 履歴リセット
+            st.session_state.pop("shadowing_evaluation", None) # 評価リセット
             st.success("生成完了！下へ進んでください。")
 
 # タブ3：フリー入力
@@ -109,6 +117,8 @@ with setup_tab3:
         if manual_text.strip():
             st.session_state.shadowing_script = manual_text.strip()
             st.session_state.pop("shadowing_chunks", None)
+            st.session_state.shadowing_history = [] # 履歴リセット
+            st.session_state.pop("shadowing_evaluation", None) # 評価リセット
             st.success("セット完了！下へ進んでください。")
         else:
             st.warning("英文を入力してください。")
@@ -180,7 +190,7 @@ if "shadowing_chunks" in st.session_state and st.session_state.shadowing_chunks:
             else:
                 st.markdown("🔒 *(Text Hidden - 耳だけを頼りに！)*")
 
-            # 2. お手本音声（通信料ゼロのgTTS）
+            # 2. お手本音声
             speak_text = clean_text_for_tts(chunk['en'])
             try:
                 tts = gTTS(text=speak_text, lang='en')
@@ -191,7 +201,7 @@ if "shadowing_chunks" in st.session_state and st.session_state.shadowing_chunks:
             except Exception:
                 pass
 
-            # 3. テスト録音（ここぞという時だけ送信）
+            # 3. テスト録音
             test_audio = st.audio_input("マイクで録音する", key=f"sh_mic_{i}")
             if test_audio:
                 if st.button("📤 この発音をAIに判定してもらう", key=f"sh_btn_{i}", type="primary"):
@@ -203,7 +213,7 @@ if "shadowing_chunks" in st.session_state and st.session_state.shadowing_chunks:
                             user_spoken = res.text.strip() if res.parts else ""
                             st.write(f"🎤 あなたの発音: **{user_spoken}**")
 
-                            # ★修正ポイント：記号と大文字小文字を完全に無視させるプロンプト
+                            # 判定
                             judge_prompt = f"""
                             お手本:「{chunk['en']}」
                             発音:「{user_spoken}」
@@ -215,6 +225,71 @@ if "shadowing_chunks" in st.session_state and st.session_state.shadowing_chunks:
                             """
                             judge_model = genai.GenerativeModel("gemini-2.5-flash")
                             judge_res = judge_model.generate_content(judge_prompt)
-                            st.success(f"🤖 判定: {judge_res.text.strip()}")
+                            judge_text = judge_res.text.strip()
+                            st.success(f"🤖 判定: {judge_text}")
+                            
+                            # ★判定履歴を保存（総評の材料になります）
+                            st.session_state.shadowing_history.append({
+                                "お手本": chunk['en'],
+                                "ユーザー発音": user_spoken,
+                                "AI判定": judge_text
+                            })
+                            
                         except Exception:
                             st.error("エラーが発生しました。")
+
+    st.markdown("---")
+    
+    # ==========================================
+    # 3. 総評エリア (★追加機能)
+    # ==========================================
+    st.header("🏆 3. 今日の総評")
+    st.write("シャドーイング練習お疲れ様でした！最後に今日の頑張りをAIコーチに評価してもらいましょう。")
+    
+    if st.button("🛑 今日の練習を終了して総評をもらう", use_container_width=True):
+        if not st.session_state.shadowing_history:
+            st.warning("まだAI判定を受けていないようです。まずは上のチャンクごとにマイクで発音を判定してみましょう！")
+        else:
+            with st.spinner("AIコーチが今日の頑張りを評価しています..."):
+                try:
+                    # 履歴をテキスト化してAIに渡す
+                    history_text = ""
+                    for idx, record in enumerate(st.session_state.shadowing_history, 1):
+                        history_text += f"\n【{idx}回目】\n"
+                        history_text += f"お手本: {record['お手本']}\n"
+                        history_text += f"発音: {record['ユーザー発音']}\n"
+                        history_text += f"判定: {record['AI判定']}\n"
+                        
+                    evaluation_prompt = f"""
+                    あなたは情熱的で優しい英語の発音コーチです。
+                    生徒が今日のシャドーイング練習を終えました。以下の「AI判定履歴」をもとに、今日の頑張りをたくさん褒めて、総評を出力してください。
+                    
+                    【生徒の練習履歴】
+                    {history_text}
+                    
+                    以下のフォーマットで出力してください。前置きは不要です。
+                    
+                    【本日のシャドーイングスコア】
+                    - 発音の正確さ: 〇/100点
+                    - 流暢さ・再現度: 〇/100点
+                    - 練習への熱意: 〇/100点
+                    - 総合スコア: 〇/100点
+                    
+                    【良かった点・褒めポイント】
+                    - （具体的に良かった点を箇条書きでたくさん褒める）
+                    
+                    【今後の課題・アドバイス】
+                    - （発音の傾向や苦手な単語があれば優しく指摘し、ポジティブにアドバイス）
+                    """
+                    
+                    eval_model = genai.GenerativeModel("gemini-2.5-flash")
+                    eval_res = eval_model.generate_content(evaluation_prompt)
+                    
+                    st.session_state.shadowing_evaluation = eval_res.text.strip()
+                except Exception as e:
+                    st.error(f"評価の作成に失敗しました。{e}")
+                    
+    # 総評結果の表示
+    if "shadowing_evaluation" in st.session_state:
+        st.success("🎉 **AIコーチからの総評**")
+        st.markdown(st.session_state.shadowing_evaluation)
