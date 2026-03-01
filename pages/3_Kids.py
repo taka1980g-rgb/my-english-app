@@ -6,12 +6,12 @@ import re
 import json
 from datetime import datetime
 
-# === 🎨 キッズ専用・左右分割＆超ワイドデザイン ===
+# === 🎨 キッズ専用・縦型スリム化デザイン ===
 st.markdown("""
     <style>
-    /* 画面の横幅を限界まで広げる（スクロール防止） */
+    /* 画面の横幅を広げる（PC/タブレットの余白削減） */
     div[data-testid="block-container"] {
-        max-width: 98% !important;
+        max-width: 900px !important;
         padding-top: 2rem !important;
         padding-bottom: 2rem !important;
     }
@@ -21,58 +21,48 @@ st.markdown("""
         font-family: 'Hiragino Maru Gothic ProN', 'Comic Sans MS', sans-serif !important;
     }
     
-    /* 左側：プレイエリアの枠 */
-    .kamishibai-box {
+    /* プレイエリアの枠（パディングを極限まで削ってスリムに） */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
         background-color: #FFFFE0 !important;
         border: 4px solid #FFD700 !important;
         border-radius: 15px !important;
-        padding: 15px 20px !important;
+        padding: 5px 15px !important;
         box-shadow: 0 5px 15px rgba(0,0,0,0.05) !important;
-        margin-bottom: 10px;
     }
     
-    /* 英語テキスト全体を包むコンテナ */
+    /* 英語テキスト全体を包むコンテナ（少し小さく24pxに） */
     .english-text-container {
-        font-size: 32px !important;
+        font-size: 24px !important;
         font-weight: normal !important; 
         color: #333333 !important; 
-        line-height: 1.8 !important;
+        line-height: 1.6 !important;
         word-wrap: break-word;
         text-align: center;
-        margin-bottom: 10px;
+        margin-bottom: 5px;
     }
     
     /* ふりがな（ルビ）と単語のスキマ調整 */
     .english-text-container ruby {
-        font-size: 32px !important; 
+        font-size: 24px !important; 
         font-weight: normal !important; 
         color: #333333 !important; 
-        margin-right: 12px !important; 
+        margin-right: 8px !important; 
     }
     .english-text-container rt {
-        font-size: 14px !important; 
+        font-size: 12px !important; 
         color: #FF4500 !important; 
         font-weight: bold !important; 
     }
     
     /* 日本語訳の小型化 */
-    .ja-text { font-size: 18px !important; color: #666; font-weight: bold; margin-top: 0px; margin-bottom: 5px; text-align: center;}
-    
-    /* 右側：操作エリアの枠 */
-    .control-box {
-        background-color: #F0F8FF !important;
-        border: 4px solid #87CEFA !important;
-        border-radius: 15px !important;
-        padding: 15px !important;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.05) !important;
-    }
+    .ja-text { font-size: 15px !important; color: #666; font-weight: bold; margin-top: 0px; margin-bottom: 0px; text-align: center;}
     
     /* ボタン全般の高さを抑える */
     div.stButton > button {
-        border-radius: 15px !important;
-        font-size: 18px !important;
+        border-radius: 10px !important;
+        font-size: 16px !important;
         font-weight: bold !important;
-        padding: 5px 10px !important;
+        padding: 5px !important;
         min-height: 0px !important;
     }
     
@@ -85,10 +75,13 @@ st.markdown("""
     /* ポップアップ枠 */
     .levelup-box {
         text-align: center;
-        padding: 20px;
-        margin-top: 20px; 
-        margin-bottom: 20px;
+        padding: 10px;
+        margin-top: 10px; 
+        margin-bottom: 10px;
     }
+    
+    /* 水平線のスキマ削減 */
+    hr { margin: 10px 0 !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -173,7 +166,7 @@ with st.sidebar:
     st.write("※あそぶときは、このメニューをとじてね！")
     st.markdown("---")
     
-    # 1. 遊びかたの設定（リアルタイム反映）
+    # 1. 遊びかたの設定
     st.markdown("### 👀 えいごの みえかた")
     st.session_state.kids_display_mode = st.radio(
         "表示モード", 
@@ -227,42 +220,7 @@ with st.sidebar:
             except Exception:
                 st.error("エラーがおきました。")
 
-    # 3. 途中でお話をかえる
-    if st.session_state.kids_state == "playing":
-        st.markdown("---")
-        st.markdown("### 🔄 とちゅうで おはなしを かえる")
-        change_sit_label = st.selectbox("あたらしい おはなし", list(sit_options.keys()), key="change_sit_sb")
-        if sit_options[change_sit_label] == "custom":
-            change_custom_sit = st.text_input("じゆうにゅうりょく", "例: まほうのくに", key="change_sit_custom")
-            change_final_sit = change_custom_sit
-        else:
-            change_final_sit = sit_options[change_sit_label]
-            
-        if st.button("🔄 このおはなしに かえる", use_container_width=True):
-            st.session_state.final_sit = change_final_sit
-            st.session_state.kids_feedback = ""
-            st.session_state.last_audio_hash = None
-            kids_instruction = f"""
-            あなたは、日本の子供に英語を教える優しい先生です。シチュエーション: {st.session_state.final_sit}、子供の名前: {st.session_state.child_name}
-            【厳守フォーマット】XMLタグのみ。
-            <ai_en>（英語の質問。1文のみ）</ai_en><ai_ja>（日本語の意味）</ai_ja><ai_ruby>（ルビ）</ai_ruby>
-            <hint_en>（英語の答え）</hint_en><hint_ja>（日本語の意味）</hint_ja><hint_ruby>（ルビ）</hint_ruby>
-            """
-            with st.spinner("じゅんびちゅう..."):
-                try:
-                    model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=kids_instruction)
-                    st.session_state.kids_chat = model.start_chat(history=[])
-                    hint_rule = get_hint_length_rule(st.session_state.kids_level)
-                    res = st.session_state.kids_chat.send_message(f"シチュエーションが変わりました。レベル{st.session_state.kids_level}の質問をしてください。\n子供の答えのヒント（<hint_en>）は【{hint_rule}】で作成。")
-                    st.session_state.kids_data = {
-                        "ai_en": extract_tag(res.text, "ai_en"), "ai_ja": extract_tag(res.text, "ai_ja"), "ai_ruby": extract_tag(res.text, "ai_ruby"),
-                        "hint_en": extract_tag(res.text, "hint_en"), "hint_ja": extract_tag(res.text, "hint_ja"), "hint_ruby": extract_tag(res.text, "hint_ruby"),
-                    }
-                    st.rerun()
-                except Exception:
-                    st.error("エラーがおきました。")
-
-    # 4. セーブ＆ロード
+    # 3. セーブ＆ロード
     st.markdown("---")
     st.markdown("### 💾 セーブ ＆ ロード")
     uploaded_save = st.file_uploader("データのよみこみ(.json)", type=["json"])
@@ -298,12 +256,14 @@ with st.sidebar:
         today_str = datetime.now().strftime("%Y-%m-%d")
         st.download_button("💾 データをセーブ", data=json.dumps(save_data, ensure_ascii=False, indent=2), file_name=f"{today_str}_kids_save.json", mime="application/json", use_container_width=True)
 
+
 # ==========================================
 # 🌟 メイン画面（セットアップ待ち）
 # ==========================================
 if st.session_state.kids_state == "setup":
     st.info("👈 ひだりの メニュー（＞ボタン）をひらいて、あたらしく おはなし を はじめてね！")
     st.stop()
+
 
 # ==========================================
 # 🎁 レベルアップ時の専用ポップアップ画面
@@ -346,22 +306,19 @@ if st.session_state.get("pending_levelup"):
         st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
+
 # ==========================================
-# 🎮 レッスン（あそぶ）エリア【左右分割・完全版】
+# 🎮 レッスン（あそぶ）エリア【縦型スリム版】
 # ==========================================
 data = st.session_state.kids_data
 mode = st.session_state.kids_display_mode
 
-# ★画面を左右に分割（左6：右4 の比率）
-col_left, col_right = st.columns([6, 4], gap="medium")
+# 🌟 ステータス表示（上部にコンパクトに）
+st.markdown(f"<h4 style='text-align: left; color: #FF4500; margin-top:0;'>🚩 レベル: {st.session_state.kids_level} ｜ 👑 ほし: {'⭐' * st.session_state.kids_stamps}</h4>", unsafe_allow_html=True)
 
-# ------------------------------------
-# 📖 左側：英語の質問とヒント（紙芝居）
-# ------------------------------------
-with col_left:
-    st.markdown('<div class="kamishibai-box">', unsafe_allow_html=True)
-    
-    # 🤖 AIの質問
+# 🌟 紙芝居エリア（1つの枠にすべてを統合、余白を削る）
+with st.container(border=True):
+    # --- 前半：AIの質問 ---
     st.write("🤖 **えいご の しつもん**")
     if mode == "🗣️ カタカナも":
         st.markdown(f'<div class="english-text-container">{apply_ruby_html(data["ai_ruby"])}</div>', unsafe_allow_html=True)
@@ -382,9 +339,9 @@ with col_left:
     except Exception:
         pass
 
-    st.markdown("<hr style='margin: 15px 0; border-top: 2px dashed #FFD700;'>", unsafe_allow_html=True)
+    st.markdown("<hr style='border-top: 2px dashed #FFD700;'>", unsafe_allow_html=True)
 
-    # 💡 こたえのヒント
+    # --- 後半：こたえのヒント ---
     st.write("💡 **こうやって こたえてみよう！**")
     col_hint_txt, col_hint_btn = st.columns([4, 1]) 
     with col_hint_txt:
@@ -409,96 +366,111 @@ with col_left:
                 st.audio(fp_h, format="audio/mp3", autoplay=True)
             except Exception:
                 pass
-                
-    st.markdown('</div>', unsafe_allow_html=True)
 
-# ------------------------------------
-# 🎮 右側：操作パネルと情報
-# ------------------------------------
-with col_right:
-    st.markdown('<div class="control-box">', unsafe_allow_html=True)
+# ==========================================
+# 🎤 操作パネル（マイク）
+# ==========================================
+kids_audio = st.audio_input("マイク", key=f"kids_mic_{st.session_state.kids_stamps}", label_visibility="collapsed")
+
+if kids_audio:
+    audio_bytes = kids_audio.getvalue()
+    current_audio_hash = hash(audio_bytes)
     
-    # ★案B：右側の一番上にレベルと星をドカンと配置
-    st.markdown(f"<h3 style='text-align: center; color: #FF4500; margin-top:0;'>🚩 レベル: {st.session_state.kids_level} <br> 👑 ほし: {'⭐' * st.session_state.kids_stamps}</h3>", unsafe_allow_html=True)
-    st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
-    
-    st.write("🎤 **マイクを おして えいご を いってみてね！**")
-    kids_audio = st.audio_input("マイク", key=f"kids_mic_{st.session_state.kids_stamps}", label_visibility="collapsed")
-    
-    if kids_audio:
-        audio_bytes = kids_audio.getvalue()
-        current_audio_hash = hash(audio_bytes)
+    if st.session_state.last_audio_hash != current_audio_hash:
+        st.audio(audio_bytes, format="audio/wav", autoplay=True)
+        st.session_state.last_audio_hash = current_audio_hash
+        st.session_state.kids_feedback = "" 
         
-        if st.session_state.last_audio_hash != current_audio_hash:
-            st.audio(audio_bytes, format="audio/wav", autoplay=True)
-            st.session_state.last_audio_hash = current_audio_hash
-            st.session_state.kids_feedback = "" 
-            
-        if st.session_state.kids_feedback:
-            st.info(st.session_state.kids_feedback)
-            
-        col_ai, col_next = st.columns(2)
-        with col_ai:
-            if st.button("🤖 判定する\n(やらなくてもOK)", use_container_width=True):
-                with st.spinner("きいているよ..."):
-                    try:
-                        transcriber = genai.GenerativeModel("gemini-2.5-flash-lite")
-                        res = transcriber.generate_content([{"mime_type": "audio/wav", "data": audio_bytes}, "英語を文字起こししてください。文字のみ出力。"])
-                        user_spoken = res.text.strip() if res.parts else "（がんばって こえ を だしたよ！）"
-                        
-                        judge_prompt = f"""
-                        お手本:「{data['hint_en']}」
-                        子供の発音:「{user_spoken}」
-                        【絶対ルール】相手は6歳の子供。記号や大文字小文字の違いは絶対無視して、英単語が完全一致か判定。
-                        完全一致：「パーフェクト！すごい！」
-                        不一致：褒めずに「おしい！『〇〇』っていってみてね！」と優しくひらがなで。
-                        """
-                        judge_model = genai.GenerativeModel("gemini-2.5-flash")
-                        judge_res = judge_model.generate_content(judge_prompt)
-                        st.session_state.kids_feedback = f"🎤 きみ: **{user_spoken}**\n\n🌟 AI: **{judge_res.text.strip()}**"
-                        st.rerun()
-                    except Exception:
-                        st.error("うまく ききとれなかったみたい。")
-                        
-        with col_next:
-            if st.button("🌟 ばっちり！\nつぎへ いく！", type="primary", use_container_width=True):
-                with st.spinner("じゅんびちゅう..."):
-                    try:
-                        transcriber = genai.GenerativeModel("gemini-2.5-flash-lite")
-                        res = transcriber.generate_content([{"mime_type": "audio/wav", "data": audio_bytes}, "英語を文字起こししてください。"])
-                        user_spoken = res.text.strip() if res.parts else "（がんばってこえをだしたよ！）"
-                        
-                        st.session_state.kids_stamps += 1
-                        st.session_state.kids_feedback = ""
-                        st.session_state.last_audio_hash = None
-                        
-                        if st.session_state.kids_stamps > 0 and st.session_state.kids_stamps % 5 == 0:
-                            st.session_state.pending_levelup = True
-                            st.session_state.last_user_spoken = user_spoken
-                            st.rerun()
-                        else:
-                            hint_rule = get_hint_length_rule(st.session_state.kids_level)
-                            prompt_msg = f"子供は「{user_spoken}」と言いました。\n【重要】次の展開の質問を出してください。絶対に直近と同じ質問や回答パターンにならないよう、物語を進行させてください。\n子供のヒント（<hint_en>）は【{hint_rule}】で。"
-                            next_res = st.session_state.kids_chat.send_message(prompt_msg)
-                            st.session_state.kids_data = {
-                                "ai_en": extract_tag(next_res.text, "ai_en"), "ai_ja": extract_tag(next_res.text, "ai_ja"), "ai_ruby": extract_tag(next_res.text, "ai_ruby"),
-                                "hint_en": extract_tag(next_res.text, "hint_en"), "hint_ja": extract_tag(next_res.text, "hint_ja"), "hint_ruby": extract_tag(next_res.text, "hint_ruby"),
-                            }
-                            st.rerun()
-                    except Exception:
-                        st.error("エラーがおきたよ。")
+    if st.session_state.kids_feedback:
+        st.info(st.session_state.kids_feedback)
 
-    st.write("") 
-    
-    col_skip, col_down = st.columns(2)
-    with col_skip:
-        if st.button("⏭️ むずかしい\nから とばす", use_container_width=True):
+# ==========================================
+# 🔘 アクションボタン（横1列に4つ並べる）
+# ==========================================
+col_b1, col_b2, col_b3, col_b4 = st.columns(4)
+
+with col_b1:
+    if st.button("🤖 はつおん\nチェック", use_container_width=True):
+        if kids_audio:
+            with st.spinner("判定中..."):
+                try:
+                    transcriber = genai.GenerativeModel("gemini-2.5-flash-lite")
+                    res = transcriber.generate_content([{"mime_type": "audio/wav", "data": audio_bytes}, "英語を文字起こししてください。文字のみ出力。"])
+                    user_spoken = res.text.strip() if res.parts else "（がんばって こえ を だしたよ！）"
+                    
+                    judge_prompt = f"""
+                    お手本:「{data['hint_en']}」
+                    子供の発音:「{user_spoken}」
+                    【絶対ルール】相手は6歳の子供。記号や大文字小文字の違いは絶対無視して、英単語が完全一致か判定。
+                    完全一致：「パーフェクト！すごい！」
+                    不一致：褒めずに「おしい！『〇〇』っていってみてね！」と優しくひらがなで。
+                    """
+                    judge_model = genai.GenerativeModel("gemini-2.5-flash")
+                    judge_res = judge_model.generate_content(judge_prompt)
+                    st.session_state.kids_feedback = f"🎤 きみ: **{user_spoken}**\n\n🌟 AI: **{judge_res.text.strip()}**"
+                    st.rerun()
+                except Exception:
+                    st.error("うまく ききとれなかったみたい。")
+        else:
+            st.warning("マイクでおはなししてね！")
+
+with col_b2:
+    if st.button("🌟 つぎへ\nすすむ！", type="primary", use_container_width=True):
+        if kids_audio:
+            with st.spinner("じゅんびちゅう..."):
+                try:
+                    transcriber = genai.GenerativeModel("gemini-2.5-flash-lite")
+                    res = transcriber.generate_content([{"mime_type": "audio/wav", "data": audio_bytes}, "英語を文字起こししてください。"])
+                    user_spoken = res.text.strip() if res.parts else "（がんばってこえをだしたよ！）"
+                    
+                    st.session_state.kids_stamps += 1
+                    st.session_state.kids_feedback = ""
+                    st.session_state.last_audio_hash = None
+                    
+                    if st.session_state.kids_stamps > 0 and st.session_state.kids_stamps % 5 == 0:
+                        st.session_state.pending_levelup = True
+                        st.session_state.last_user_spoken = user_spoken
+                        st.rerun()
+                    else:
+                        hint_rule = get_hint_length_rule(st.session_state.kids_level)
+                        prompt_msg = f"子供は「{user_spoken}」と言いました。\n【重要】次の展開の質問を出してください。絶対に直近と同じ質問や回答パターンにならないよう、物語を進行させてください。\n子供のヒント（<hint_en>）は【{hint_rule}】で。"
+                        next_res = st.session_state.kids_chat.send_message(prompt_msg)
+                        st.session_state.kids_data = {
+                            "ai_en": extract_tag(next_res.text, "ai_en"), "ai_ja": extract_tag(next_res.text, "ai_ja"), "ai_ruby": extract_tag(next_res.text, "ai_ruby"),
+                            "hint_en": extract_tag(next_res.text, "hint_en"), "hint_ja": extract_tag(next_res.text, "hint_ja"), "hint_ruby": extract_tag(next_res.text, "hint_ruby"),
+                        }
+                        st.rerun()
+                except Exception:
+                    st.error("エラーがおきたよ。")
+        else:
+            st.warning("マイクでおはなししてね！")
+
+with col_b3:
+    if st.button("⏭️ とばす\n(つぎへ)", use_container_width=True):
+        with st.spinner("じゅんびちゅう..."):
+            try:
+                st.session_state.kids_feedback = ""
+                st.session_state.last_audio_hash = None
+                hint_rule = get_hint_length_rule(st.session_state.kids_level)
+                next_res = st.session_state.kids_chat.send_message(f"子供がパスしました。優しく励まして、さっきとは違う展開の質問をしてください。\n子供のヒントは【{hint_rule}】で。")
+                st.session_state.kids_data = {
+                    "ai_en": extract_tag(next_res.text, "ai_en"), "ai_ja": extract_tag(next_res.text, "ai_ja"), "ai_ruby": extract_tag(next_res.text, "ai_ruby"),
+                    "hint_en": extract_tag(next_res.text, "hint_en"), "hint_ja": extract_tag(next_res.text, "hint_ja"), "hint_ruby": extract_tag(next_res.text, "hint_ruby"),
+                }
+                st.rerun()
+            except Exception:
+                st.error("エラーがおきたよ。")
+
+with col_b4:
+    if st.button("📉 レベルを\nさげる", use_container_width=True):
+        if st.session_state.kids_level > 1:
+            st.session_state.kids_level -= 1
             with st.spinner("じゅんびちゅう..."):
                 try:
                     st.session_state.kids_feedback = ""
                     st.session_state.last_audio_hash = None
                     hint_rule = get_hint_length_rule(st.session_state.kids_level)
-                    next_res = st.session_state.kids_chat.send_message(f"子供がパスしました。優しく励まして、さっきとは違う展開の質問をしてください。\n子供のヒントは【{hint_rule}】で。")
+                    next_res = st.session_state.kids_chat.send_message(f"レベルを{st.session_state.kids_level}に下げました。簡単な文にして優しく励ましてください。\n子供のヒントは【{hint_rule}】で。")
                     st.session_state.kids_data = {
                         "ai_en": extract_tag(next_res.text, "ai_en"), "ai_ja": extract_tag(next_res.text, "ai_ja"), "ai_ruby": extract_tag(next_res.text, "ai_ruby"),
                         "hint_en": extract_tag(next_res.text, "hint_en"), "hint_ja": extract_tag(next_res.text, "hint_ja"), "hint_ruby": extract_tag(next_res.text, "hint_ruby"),
@@ -506,25 +478,41 @@ with col_right:
                     st.rerun()
                 except Exception:
                     st.error("エラーがおきたよ。")
+        else:
+            st.warning("これいじょう さげられないよ！")
 
-    with col_down:
-        if st.button("🔄 レベルを\nさげる", use_container_width=True):
-            if st.session_state.kids_level > 1:
-                st.session_state.kids_level -= 1
-                with st.spinner("じゅんびちゅう..."):
-                    try:
-                        st.session_state.kids_feedback = ""
-                        st.session_state.last_audio_hash = None
-                        hint_rule = get_hint_length_rule(st.session_state.kids_level)
-                        next_res = st.session_state.kids_chat.send_message(f"レベルを{st.session_state.kids_level}に下げました。簡単な文にして優しく励ましてください。\n子供のヒントは【{hint_rule}】で。")
-                        st.session_state.kids_data = {
-                            "ai_en": extract_tag(next_res.text, "ai_en"), "ai_ja": extract_tag(next_res.text, "ai_ja"), "ai_ruby": extract_tag(next_res.text, "ai_ruby"),
-                            "hint_en": extract_tag(next_res.text, "hint_en"), "hint_ja": extract_tag(next_res.text, "hint_ja"), "hint_ruby": extract_tag(next_res.text, "hint_ruby"),
-                        }
-                        st.rerun()
-                    except Exception:
-                        st.error("エラーがおきたよ。")
-            else:
-                st.warning("これいじょう さげられないよ！")
-                
-    st.markdown('</div>', unsafe_allow_html=True)
+# ==========================================
+# 🎒 メインエリアでの「おはなし変更」機能
+# ==========================================
+st.write("")
+with st.expander("🎒 べつの おはなし に かえる（レベルは そのまま）"):
+    change_sit_label = st.selectbox("あたらしい おはなし を えらんでね", list(sit_options.keys()), key="change_sit_sb")
+    if sit_options[change_sit_label] == "custom":
+        change_custom_sit = st.text_input("じゆうにゅうりょく", "例: まほうのくに", key="change_sit_custom")
+        change_final_sit = change_custom_sit
+    else:
+        change_final_sit = sit_options[change_sit_label]
+        
+    if st.button("🚀 このおはなしに かえる！", use_container_width=True):
+        st.session_state.final_sit = change_final_sit
+        st.session_state.kids_feedback = ""
+        st.session_state.last_audio_hash = None
+        kids_instruction = f"""
+        あなたは、日本の子供に英語を教える優しい先生です。シチュエーション: {st.session_state.final_sit}、子供の名前: {st.session_state.child_name}
+        【厳守フォーマット】XMLタグのみ。
+        <ai_en>（英語の質問。1文のみ）</ai_en><ai_ja>（日本語の意味）</ai_ja><ai_ruby>（ルビ）</ai_ruby>
+        <hint_en>（英語の答え）</hint_en><hint_ja>（日本語の意味）</hint_ja><hint_ruby>（ルビ）</hint_ruby>
+        """
+        with st.spinner("じゅんびちゅう..."):
+            try:
+                model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=kids_instruction)
+                st.session_state.kids_chat = model.start_chat(history=[])
+                hint_rule = get_hint_length_rule(st.session_state.kids_level)
+                res = st.session_state.kids_chat.send_message(f"シチュエーションが変わりました。レベル{st.session_state.kids_level}の質問をしてください。\n子供の答えのヒント（<hint_en>）は【{hint_rule}】で作成。")
+                st.session_state.kids_data = {
+                    "ai_en": extract_tag(res.text, "ai_en"), "ai_ja": extract_tag(res.text, "ai_ja"), "ai_ruby": extract_tag(res.text, "ai_ruby"),
+                    "hint_en": extract_tag(res.text, "hint_en"), "hint_ja": extract_tag(res.text, "hint_ja"), "hint_ruby": extract_tag(res.text, "hint_ruby"),
+                }
+                st.rerun()
+            except Exception:
+                st.error("エラーがおきました。")
