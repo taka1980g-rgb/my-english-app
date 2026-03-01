@@ -59,13 +59,12 @@ with setup_tab1:
                     script += q + "\n\n"
         if script:
             st.session_state.shadowing_script = script.strip()
-            # 別の教材を読み込んだ場合は分割チャンクをリセット
             st.session_state.pop("shadowing_chunks", None) 
             st.success("読み込み完了！下へ進んでください。")
         else:
             st.warning("履歴が見つかりません。先にロールプレイモードで会話してください。")
 
-# タブ2：AI自動生成（★改善：名前、長さの追加とプレースホルダー禁止）
+# タブ2：AI自動生成
 with setup_tab2:
     level = st.selectbox("難易度（対象レベル）", [
         "1: 幼児・超初心者（短い挨拶、簡単な単語）",
@@ -100,7 +99,7 @@ with setup_tab2:
             4. 出力は英語のセリフのみとしてください（日本語の解説や前置きは一切不要）。
             """
             st.session_state.shadowing_script = ai.generate_content(prompt).text
-            st.session_state.pop("shadowing_chunks", None) # 分割チャンクをリセット
+            st.session_state.pop("shadowing_chunks", None) 
             st.success("生成完了！下へ進んでください。")
 
 # タブ3：フリー入力
@@ -109,7 +108,7 @@ with setup_tab3:
     if st.button("この英文を使う"):
         if manual_text.strip():
             st.session_state.shadowing_script = manual_text.strip()
-            st.session_state.pop("shadowing_chunks", None) # 分割チャンクをリセット
+            st.session_state.pop("shadowing_chunks", None)
             st.success("セット完了！下へ進んでください。")
         else:
             st.warning("英文を入力してください。")
@@ -122,14 +121,12 @@ st.markdown("---")
 st.header("🏋️ 2. トレーニング")
 
 if st.session_state.shadowing_script:
-    # ★改善：まずは全文を表示して通しで再生する機能
     st.write("📖 **現在のスクリプト（全文）**")
     st.info(st.session_state.shadowing_script)
     
     col1, col2 = st.columns(2)
     
     with col1:
-        # 全文再生ボタン
         if st.button("🔊 全文のお手本を通しで聞く", use_container_width=True):
             with st.spinner("音声を生成中..."):
                 speak_text = clean_text_for_tts(st.session_state.shadowing_script)
@@ -143,7 +140,6 @@ if st.session_state.shadowing_script:
                     st.error("音声の生成に失敗しました。")
 
     with col2:
-        # チャンク分割ボタン
         if st.button("✂️ 1文ずつに分割して特訓する", type="primary", use_container_width=True):
             with st.spinner("AIが和訳と分割を行っています... (※ここで1回だけ通信します)"):
                 ai = genai.GenerativeModel("gemini-2.5-flash")
@@ -207,9 +203,18 @@ if "shadowing_chunks" in st.session_state and st.session_state.shadowing_chunks:
                             user_spoken = res.text.strip() if res.parts else ""
                             st.write(f"🎤 あなたの発音: **{user_spoken}**")
 
-                            # 判定
+                            # ★修正ポイント：記号と大文字小文字を完全に無視させるプロンプト
+                            judge_prompt = f"""
+                            お手本:「{chunk['en']}」
+                            発音:「{user_spoken}」
+                            
+                            【判定ルール】
+                            上記2つを比較し、英単語が一言一句同じか判定してください。
+                            ただし、ピリオド(.)、カンマ(,)、感嘆符(!)、疑問符(?)などの「句読点の有無や違い」や、「大文字・小文字の違い」は【絶対に無視】してください。
+                            純粋に「発音された単語」に違いや抜け漏れがある場合のみ、日本語で1文で厳しく指摘してください。完全に一致していれば合格としてください。
+                            """
                             judge_model = genai.GenerativeModel("gemini-2.5-flash")
-                            judge_res = judge_model.generate_content(f"お手本:「{chunk['en']}」\n発音:「{user_spoken}」\n一言一句同じか厳格に判定し、違いや抜け漏れがあれば日本語で1文で厳しく指摘してください。")
+                            judge_res = judge_model.generate_content(judge_prompt)
                             st.success(f"🤖 判定: {judge_res.text.strip()}")
                         except Exception:
                             st.error("エラーが発生しました。")
