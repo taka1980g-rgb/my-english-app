@@ -284,4 +284,83 @@ if "shadowing_chunks" in st.session_state and st.session_state.shadowing_chunks:
                     with st.spinner("鬼判定中..."):
                         try:
                             transcriber = genai.GenerativeModel("gemini-2.5-flash")
-                            res = transcriber.generate_content([{"mime_type": "audio/wav
+                            res = transcriber.generate_content([{"mime_type": "audio/wav", "data": test_audio.getvalue()}, "英語を文字起こししてください。文字のみ出力。"])
+                            user_spoken = res.text.strip() if res.parts else ""
+                            st.write(f"🎤 あなたの発音: **{user_spoken}**")
+
+                            judge_prompt = f"""
+                            お手本:「{chunk['en']}」
+                            発音:「{user_spoken}」
+                            
+                            【判定ルール】
+                            上記2つを比較し、英単語が一言一句同じか判定してください。
+                            ただし、ピリオド(.)、カンマ(,)、感嘆符(!)、疑問符(?)などの「句読点の有無や違い」や、「大文字・小文字の違い」は【絶対に無視】してください。
+                            純粋に「発音された単語」に違いや抜け漏れがある場合のみ、日本語で1文で厳しく指摘してください。完全に一致していれば合格としてください。
+                            """
+                            judge_model = genai.GenerativeModel("gemini-2.5-flash")
+                            judge_res = judge_model.generate_content(judge_prompt)
+                            judge_text = judge_res.text.strip()
+                            st.success(f"🤖 判定: {judge_text}")
+                            
+                            st.session_state.shadowing_history.append({
+                                "お手本": chunk['en'],
+                                "ユーザー発音": user_spoken,
+                                "AI判定": judge_text
+                            })
+                            
+                        except Exception:
+                            st.error("エラーが発生しました。")
+
+    st.markdown("---")
+    
+    # ==========================================
+    # 3. 総評エリア
+    # ==========================================
+    st.header("🏆 3. 今日の総評")
+    st.write("シャドーイング練習お疲れ様でした！最後に今日の頑張りをAIコーチに評価してもらいましょう。")
+    
+    if st.button("🛑 今日の練習を終了して総評をもらう", use_container_width=True):
+        if not st.session_state.shadowing_history:
+            st.warning("まだAI判定を受けていないようです。まずは上のチャンクごとにマイクで発音を判定してみましょう！")
+        else:
+            with st.spinner("AIコーチが今日の頑張りを評価しています..."):
+                try:
+                    history_text = ""
+                    for idx, record in enumerate(st.session_state.shadowing_history, 1):
+                        history_text += f"\n【{idx}回目】\n"
+                        history_text += f"お手本: {record['お手本']}\n"
+                        history_text += f"発音: {record['ユーザー発音']}\n"
+                        history_text += f"判定: {record['AI判定']}\n"
+                        
+                    evaluation_prompt = f"""
+                    あなたは情熱的で優しい英語の発音コーチです。
+                    生徒が今日のシャドーイング練習を終えました。以下の「AI判定履歴」をもとに、今日の頑張りをたくさん褒めて、総評を出力してください。
+                    
+                    【生徒の練習履歴】
+                    {history_text}
+                    
+                    以下のフォーマットで出力してください。前置きは不要です。
+                    
+                    【本日のシャドーイングスコア】
+                    - 発音の正確さ: 〇/100点
+                    - 流暢さ・再現度: 〇/100点
+                    - 練習への熱意: 〇/100点
+                    - 総合スコア: 〇/100点
+                    
+                    【良かった点・褒めポイント】
+                    - （具体的に良かった点を箇条書きでたくさん褒める）
+                    
+                    【今後の課題・アドバイス】
+                    - （発音の傾向や苦手な単語があれば優しく指摘し、ポジティブにアドバイス）
+                    """
+                    
+                    eval_model = genai.GenerativeModel("gemini-2.5-flash")
+                    eval_res = eval_model.generate_content(evaluation_prompt)
+                    
+                    st.session_state.shadowing_evaluation = eval_res.text.strip()
+                except Exception as e:
+                    st.error(f"評価の作成に失敗しました。{e}")
+                    
+    if "shadowing_evaluation" in st.session_state:
+        st.success("🎉 **AIコーチからの総評**")
+        st.markdown(st.session_state.shadowing_evaluation)
