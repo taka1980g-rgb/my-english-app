@@ -23,7 +23,19 @@ st.markdown("""
         box-shadow: 0 5px 15px rgba(0,0,0,0.05) !important;
     }
     
-    /* ふりがな（ルビ）の調整（少し小さくして高さを抑える） */
+    /* レベルアップ時のポップアップ枠 */
+    .levelup-box {
+        background-color: #FFF0F5;
+        border: 6px solid #FF69B4;
+        border-radius: 30px;
+        padding: 40px;
+        text-align: center;
+        box-shadow: 0 15px 25px rgba(0,0,0,0.15);
+        margin-top: 30px;
+        margin-bottom: 30px;
+    }
+    
+    /* ふりがな（ルビ）の調整 */
     ruby { font-size: 28px !important; font-weight: bold; color: #1E90FF; }
     rt { font-size: 12px !important; color: #FF4500; font-weight: bold; }
     
@@ -163,6 +175,7 @@ with st.expander("🔒 おうちのひとへ（せってい ＆ セーブ・ロ�
         st.session_state.pending_levelup = False
         st.session_state.kids_state = "playing"
         
+        # ★修正：日本語訳（ja）の意味を明確にして、ただのカタカナ読みを禁止
         kids_instruction = f"""
         あなたは、日本の子供に英語を教える優しい先生です。
         シチュエーション: {st.session_state.final_sit}
@@ -170,10 +183,10 @@ with st.expander("🔒 おうちのひとへ（せってい ＆ セーブ・ロ�
 
         【厳守する出力フォーマット】必ず以下のXMLタグのみで出力してください。
         <ai_en>（あなたが子供に投げかける英語の質問。1文のみ）</ai_en>
-        <ai_ja>（上の英語のひらがな訳）</ai_ja>
+        <ai_ja>（上の英語の【日本語の意味】をひらがなで書いたもの。絶対に英語の読み方は書かないこと。例: なにがすき？）</ai_ja>
         <ai_ruby>（上の英語に「Word(カタカナ)」でルビを振ったもの。例: What(ホワット) is(イズ) it?(イット)）</ai_ruby>
         <hint_en>（子供が真似して答えるための英語の答え。1文のみ）</hint_en>
-        <hint_ja>（上の答えのひらがな訳）</hint_ja>
+        <hint_ja>（上の答えの【日本語の意味】をひらがなで書いたもの。絶対に英語の読み方は書かないこと。例: りんごがすきだよ。）</hint_ja>
         <hint_ruby>（上の答えのルビ付き。例: I(アイ) like(ライク) apples.(アップルズ)）</hint_ruby>
         """
         
@@ -229,8 +242,8 @@ with st.expander("🔒 おうちのひとへ（せってい ＆ セーブ・ロ�
 if st.session_state.kids_state == "playing" and st.session_state.get("pending_levelup"):
     st.balloons()
     
-    # ズレないようにStreamlit標準の枠(container)を使用
     with st.container(border=True):
+        st.markdown("<div class='levelup-box'>", unsafe_allow_html=True)
         st.markdown("<h2 style='text-align:center; color: #FF6B6B;'>🎉 よく がんばったね！</h2>", unsafe_allow_html=True)
         st.markdown("<h3 style='text-align:center;'>ほしが ５つ あつまったよ。<br>つぎは どうする？</h3>", unsafe_allow_html=True)
         
@@ -274,8 +287,8 @@ if st.session_state.kids_state == "playing" and st.session_state.get("pending_le
                         "hint_ruby": extract_tag(next_res.text, "hint_ruby"),
                     }
                     st.rerun()
-                    
-    st.stop() # ここでプログラムを止めてプレイ画面を隠す
+        st.markdown('</div>', unsafe_allow_html=True)
+    st.stop()
 
 
 # ==========================================
@@ -291,20 +304,19 @@ if st.session_state.kids_state == "playing" and st.session_state.kids_data:
     with col_stamp:
         st.write(f"**👑 ほし: {'⭐' * st.session_state.kids_stamps}**")
         
-    # 🌟 紙芝居エリア（1つの枠にすべてを統合）
+    # 🌟 紙芝居エリア
     with st.container(border=True):
         # --- 前半：AIの質問 ---
         st.write("🤖 **えいご の しつもん**")
         if display_mode == "🗣️ カタカナも（おすすめ！）":
             st.markdown(apply_ruby_html(data["ai_ruby"]), unsafe_allow_html=True)
             st.markdown(f'<div class="ja-text">🇯🇵 {data["ai_ja"]}</div>', unsafe_allow_html=True)
-        elif display_mode == "🇯 ঐতি にほんごも":
+        elif display_mode == "🇯🇵 にほんごも":
             st.markdown(f"<h3>{data['ai_en']}</h3>", unsafe_allow_html=True)
             st.markdown(f'<div class="ja-text">🇯🇵 {data["ai_ja"]}</div>', unsafe_allow_html=True)
         else:
             st.markdown(f"<h3>{data['ai_en']}</h3>", unsafe_allow_html=True)
             
-        # 質問の音声自動再生（裏側で動く）
         speak_text = clean_text_for_tts(data["ai_en"])
         try:
             tts = gTTS(text=speak_text, lang='en')
@@ -315,12 +327,11 @@ if st.session_state.kids_state == "playing" and st.session_state.kids_data:
         except Exception:
             pass
 
-        # 境界線
         st.markdown("<hr style='margin: 10px 0; border-top: 2px dashed #FFD700;'>", unsafe_allow_html=True)
 
-        # --- 後半：こたえのヒント（横並びで省スペース） ---
+        # --- 後半：こたえのヒント ---
         st.write("💡 **こうやって こたえてみよう！**")
-        col_hint_txt, col_hint_btn = st.columns([3, 1]) # 横に並べる
+        col_hint_txt, col_hint_btn = st.columns([3, 1]) 
         
         with col_hint_txt:
             if display_mode == "🗣️ カタカナも（おすすめ！）":
@@ -345,13 +356,11 @@ if st.session_state.kids_state == "playing" and st.session_state.kids_data:
                     pass
 
     # ==========================================
-    # 🎤 操作パネル（マイクと各種ボタン）
+    # 🎤 操作パネル
     # ==========================================
     st.write("🎤 **マイクを おして えいご を いってみてね！**")
-    # label_visibility="collapsed" でマイク上の文字を消してスペース節約
     kids_audio = st.audio_input("マイク", key=f"kids_mic_{st.session_state.kids_stamps}", label_visibility="collapsed")
     
-    # 録音された場合のアクション
     if kids_audio:
         audio_bytes = kids_audio.getvalue()
         current_audio_hash = hash(audio_bytes)
@@ -373,16 +382,15 @@ if st.session_state.kids_state == "playing" and st.session_state.kids_data:
                         res = transcriber.generate_content([{"mime_type": "audio/wav", "data": audio_bytes}, "英語を文字起こししてください。文字のみ出力。"])
                         user_spoken = res.text.strip() if res.parts else "（がんばって こえ を だしたよ！）"
                         
-                        # ★ワンポイントアドバイス付きのAI判定プロンプト
+                        # ★修正：完璧な時だけ褒め、違う時は優しく言い直しを促すプロンプト
                         judge_prompt = f"""
                         お手本:「{data['hint_en']}」
                         子供の発音:「{user_spoken}」
                         【絶対ルール】
                         相手は英語を始めたばかりの6歳の子供です。
-                        まずは「〇〇っていえたね！えらい！」と必ず褒めてください。
-                        その上で、もし発音や単語に間違いがあれば、「ここを『〇〇』っていえたら もっと かんぺき だよ！」のように、1つだけ優しくひらがな・カタカナでアドバイスをしてください。
-                        完全に一致していれば「パーフェクト！」と褒めちぎってください。
-                        出力はひらがなとカタカナのみ、2〜3文でお願いします。
+                        発音が完璧に合っている場合のみ「パーフェクト！すごい！」と全力で褒めてください。
+                        少しでも間違っていたり単語が抜けている場合は、褒めるのはやめて、「おしい！『〇〇』っていってみてね！」や「もういっかい やってみよう！」など、優しく言い直しを促すアドバイスをしてください。
+                        出力はひらがなとカタカナのみ、1〜2文でお願いします。
                         """
                         judge_model = genai.GenerativeModel("gemini-2.5-flash-lite")
                         judge_res = judge_model.generate_content(judge_prompt)
@@ -403,7 +411,6 @@ if st.session_state.kids_state == "playing" and st.session_state.kids_data:
                         st.session_state.kids_feedback = ""
                         st.session_state.last_audio_hash = None
                         
-                        # ★レベルアップ判定
                         if st.session_state.kids_stamps > 0 and st.session_state.kids_stamps % 5 == 0:
                             st.session_state.pending_levelup = True
                             st.session_state.last_user_spoken = user_spoken
