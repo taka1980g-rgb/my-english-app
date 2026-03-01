@@ -175,7 +175,6 @@ with st.expander("🔒 おうちのひとへ（せってい ＆ セーブ・ロ�
         st.session_state.pending_levelup = False
         st.session_state.kids_state = "playing"
         
-        # ★修正：日本語訳（ja）の意味を明確にして、ただのカタカナ読みを禁止
         kids_instruction = f"""
         あなたは、日本の子供に英語を教える優しい先生です。
         シチュエーション: {st.session_state.final_sit}
@@ -382,14 +381,15 @@ if st.session_state.kids_state == "playing" and st.session_state.kids_data:
                         res = transcriber.generate_content([{"mime_type": "audio/wav", "data": audio_bytes}, "英語を文字起こししてください。文字のみ出力。"])
                         user_spoken = res.text.strip() if res.parts else "（がんばって こえ を だしたよ！）"
                         
-                        # ★修正：完璧な時だけ褒め、違う時は優しく言い直しを促すプロンプト
+                        # ★修正：記号と大文字小文字を完全に無視するルールを追加
                         judge_prompt = f"""
                         お手本:「{data['hint_en']}」
                         子供の発音:「{user_spoken}」
                         【絶対ルール】
                         相手は英語を始めたばかりの6歳の子供です。
-                        発音が完璧に合っている場合のみ「パーフェクト！すごい！」と全力で褒めてください。
-                        少しでも間違っていたり単語が抜けている場合は、褒めるのはやめて、「おしい！『〇〇』っていってみてね！」や「もういっかい やってみよう！」など、優しく言い直しを促すアドバイスをしてください。
+                        上記2つを比較し、英単語が合っているか判定してください。ただし、ピリオド(.)、カンマ(,)、感嘆符(!)、疑問符(?)などの「記号の有無や違い」、および「大文字・小文字の違い」は【絶対に無視】してください。
+                        純粋に発音された単語が完全に合っている場合のみ「パーフェクト！すごい！」と全力で褒めてください。
+                        もし単語が間違っていたり抜けている場合は、褒めるのはやめて、「おしい！『〇〇』っていってみてね！」や「もういっかい やってみよう！」など、優しく言い直しを促すアドバイスをしてください。
                         出力はひらがなとカタカナのみ、1〜2文でお願いします。
                         """
                         judge_model = genai.GenerativeModel("gemini-2.5-flash-lite")
