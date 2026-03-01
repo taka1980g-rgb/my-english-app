@@ -4,7 +4,6 @@ from gtts import gTTS
 import io
 import re
 import json
-import base64
 from datetime import datetime
 
 # === 🎨 キッズ専用・超見やすいフォント＆レイアウト ===
@@ -24,7 +23,7 @@ st.markdown("""
         box-shadow: 0 5px 15px rgba(0,0,0,0.05) !important;
     }
     
-    /* ★修正：英語テキスト全体を包むコンテナ（記号も単語も同じ大きさに） */
+    /* 英語テキスト全体を包むコンテナ（記号も単語も同じ大きさに） */
     .english-text-container {
         font-size: 28px !important;
         font-weight: normal !important; /* 細字に */
@@ -35,7 +34,7 @@ st.markdown("""
         margin-bottom: 10px;
     }
     
-    /* ★修正：ふりがな（ルビ）と単語のスキマ調整 */
+    /* ふりがな（ルビ）と単語のスキマ調整 */
     .english-text-container ruby {
         font-size: 28px !important; 
         font-weight: normal !important; /* 細字に */
@@ -115,18 +114,6 @@ def get_hint_length_rule(level):
     else:
         return "3文"
 
-# ★追加：再生速度を変更できる特製オーディオプレイヤー
-def get_audio_html(audio_bytes, speed=1.0, autoplay=False):
-    b64 = base64.b64encode(audio_bytes).decode()
-    autoplay_attr = "autoplay" if autoplay else ""
-    # 音声が読み込まれた瞬間に、指定したスピードに変更するJavaScriptを埋め込む
-    html_code = f"""
-    <audio controls {autoplay_attr} oncanplay="this.playbackRate={speed};" style="width:100%; height:45px; margin-top:5px;">
-        <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
-    </audio>
-    """
-    return html_code
-
 st.title("🌟 キッズえいご レッスン 🌟")
 
 # === 💾 データの初期化 ===
@@ -150,8 +137,6 @@ if "pending_levelup" not in st.session_state:
     st.session_state.pending_levelup = False
 if "last_user_spoken" not in st.session_state:
     st.session_state.last_user_spoken = ""
-if "kids_audio_speed" not in st.session_state:
-    st.session_state.kids_audio_speed = 1.0
 
 # ==========================================
 # ⚙️ おうちのひと用 設定＆セーブ・ロード
@@ -169,7 +154,6 @@ with st.expander("🔒 おうちのひとへ（せってい ＆ セーブ・ロ�
                 st.session_state.kids_stamps = save_data.get("kids_stamps", 0)
                 st.session_state.kids_level = save_data.get("kids_level", 1)
                 st.session_state.kids_data = save_data.get("kids_data", {})
-                st.session_state.kids_audio_speed = save_data.get("kids_audio_speed", 1.0)
                 st.session_state.last_audio_hash = None
                 st.session_state.kids_feedback = ""
                 st.session_state.pending_levelup = False
@@ -190,13 +174,7 @@ with st.expander("🔒 おうちのひとへ（せってい ＆ セーブ・ロ�
     st.markdown("---")
     st.markdown("### ✨ あたらしく あそぶ")
     
-    col_name, col_speed = st.columns(2)
-    with col_name:
-        child_name = st.text_input("👦👧 おこさまの おなまえ", value=st.session_state.child_name)
-    with col_speed:
-        # ★追加：お手本のスピード設定
-        speed_labels = {"ふつう (1.0x)": 1.0, "すこしゆっくり (0.8x)": 0.8, "ゆっくり (0.6x)": 0.6}
-        selected_speed_label = st.selectbox("🔊 おてほんの はやさ", list(speed_labels.keys()), index=0)
+    child_name = st.text_input("👦👧 おこさまの おなまえ（ひらがな・カタカナ）", value=st.session_state.child_name)
     
     sit_options = {
         "🍔 ハンバーガーやさん で おかいもの": "You are a friendly staff at a hamburger shop.",
@@ -223,7 +201,6 @@ with st.expander("🔒 おうちのひとへ（せってい ＆ セーブ・ロ�
         st.session_state.last_audio_hash = None
         st.session_state.kids_feedback = ""
         st.session_state.pending_levelup = False
-        st.session_state.kids_audio_speed = speed_labels[selected_speed_label]
         st.session_state.kids_state = "playing"
         
         kids_instruction = f"""
@@ -276,7 +253,6 @@ with st.expander("🔒 おうちのひとへ（せってい ＆ セーブ・ロ�
             "kids_stamps": st.session_state.kids_stamps,
             "kids_level": st.session_state.kids_level,
             "kids_data": st.session_state.kids_data,
-            "kids_audio_speed": st.session_state.kids_audio_speed,
             "history": history_to_save
         }
         
@@ -364,7 +340,6 @@ if st.session_state.kids_state == "playing" and st.session_state.kids_data:
         # --- 前半：AIの質問 ---
         st.write("🤖 **えいご の しつもん**")
         
-        # ★修正：英語の文章を <div class="english-text-container"> で囲み、フォントを統一
         if display_mode == "🗣️ カタカナも（おすすめ！）":
             st.markdown(f'<div class="english-text-container">{apply_ruby_html(data["ai_ruby"])}</div>', unsafe_allow_html=True)
             st.markdown(f'<div class="ja-text">🇯🇵 {data["ai_ja"]}</div>', unsafe_allow_html=True)
@@ -374,15 +349,14 @@ if st.session_state.kids_state == "playing" and st.session_state.kids_data:
         else:
             st.markdown(f'<div class="english-text-container">{data["ai_en"]}</div>', unsafe_allow_html=True)
             
-        # 質問の音声自動再生（指定スピードを適用）
+        # 質問の音声自動再生（標準プレイヤーへ差し戻し）
         speak_text = clean_text_for_tts(data["ai_en"])
         try:
             tts = gTTS(text=speak_text, lang='en')
             fp = io.BytesIO()
             tts.write_to_fp(fp)
             fp.seek(0)
-            # st.audio() の代わりに特製HTMLプレイヤーを出力
-            st.markdown(get_audio_html(fp.read(), speed=st.session_state.kids_audio_speed, autoplay=True), unsafe_allow_html=True)
+            st.audio(fp, format="audio/mp3", autoplay=True)
         except Exception:
             pass
 
@@ -393,7 +367,6 @@ if st.session_state.kids_state == "playing" and st.session_state.kids_data:
         col_hint_txt, col_hint_btn = st.columns([3, 1]) 
         
         with col_hint_txt:
-            # ★修正：ヒントも同様にフォントを統一
             if display_mode == "🗣️ カタカナも（おすすめ！）":
                 st.markdown(f'<div class="english-text-container">{apply_ruby_html(data["hint_ruby"])}</div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="ja-text">🇯🇵 {data["hint_ja"]}</div>', unsafe_allow_html=True)
@@ -411,8 +384,7 @@ if st.session_state.kids_state == "playing" and st.session_state.kids_data:
                     fp_h = io.BytesIO()
                     tts_h.write_to_fp(fp_h)
                     fp_h.seek(0)
-                    # ★修正：特製HTMLプレイヤーで指定スピード再生
-                    st.markdown(get_audio_html(fp_h.read(), speed=st.session_state.kids_audio_speed, autoplay=True), unsafe_allow_html=True)
+                    st.audio(fp_h, format="audio/mp3", autoplay=True)
                 except Exception:
                     pass
 
@@ -427,7 +399,6 @@ if st.session_state.kids_state == "playing" and st.session_state.kids_data:
         current_audio_hash = hash(audio_bytes)
         
         if st.session_state.last_audio_hash != current_audio_hash:
-            # 子供の音声は等倍（1.0倍）でそのまま再生
             st.audio(audio_bytes, format="audio/wav", autoplay=True)
             st.session_state.last_audio_hash = current_audio_hash
             st.session_state.kids_feedback = "" 
