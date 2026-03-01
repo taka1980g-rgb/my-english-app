@@ -23,7 +23,7 @@ st.markdown("""
         box-shadow: 0 5px 15px rgba(0,0,0,0.05) !important;
     }
     
-    /* 英語テキスト全体を包むコンテナ（記号も単語も同じ大きさに） */
+    /* 英語テキスト全体を包むコンテナ */
     .english-text-container {
         font-size: 28px !important;
         font-weight: normal !important; /* 細字に */
@@ -37,9 +37,9 @@ st.markdown("""
     /* ふりがな（ルビ）と単語のスキマ調整 */
     .english-text-container ruby {
         font-size: 28px !important; 
-        font-weight: normal !important; /* 細字に */
-        color: #333333 !important; /* 色を統一 */
-        margin-right: 12px !important; /* 単語と単語の間にスキマを作る */
+        font-weight: normal !important; 
+        color: #333333 !important; 
+        margin-right: 12px !important; /* スキマ */
     }
     
     .english-text-container rt {
@@ -66,15 +66,12 @@ st.markdown("""
         margin-bottom: -15px !important;
     }
     
-    /* ポップアップ枠 */
+    /* ★修正：ポップアップ枠をシンプル化（赤枠削除） */
     .levelup-box {
-        background-color: #FFF0F5;
-        border: 6px solid #FF69B4;
-        border-radius: 30px;
-        padding: 40px;
         text-align: center;
-        box-shadow: 0 15px 25px rgba(0,0,0,0.15);
-        margin-top: 30px; margin-bottom: 30px;
+        padding: 20px;
+        margin-top: 20px; 
+        margin-bottom: 20px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -138,6 +135,21 @@ if "pending_levelup" not in st.session_state:
 if "last_user_spoken" not in st.session_state:
     st.session_state.last_user_spoken = ""
 
+# ★修正：シチュエーション10個（+自由入力）を定義
+sit_options = {
+    "🍔 ハンバーガーやさん で おかいもの": "You are a friendly staff at a hamburger shop.",
+    "🐶 どうぶつえん で ごあいさつ": "You are a friendly zookeeper showing animals.",
+    "🍎 すきな フルーツを えらぼう": "You are a fruit shop owner asking what fruits the child likes.",
+    "🛝 こうえん で あそぼう": "You are a friendly child playing at the park.",
+    "🧸 おもちゃやさん で おかいもの": "You are a staff at a toy store asking what toy the child wants.",
+    "🍦 アイスクリームやさん": "You are an ice cream shop staff asking for flavors.",
+    "🛒 スーパーマーケット で おつかい": "You are a cashier at a supermarket.",
+    "🏥 びょういん の おしゃべり": "You are a friendly doctor asking how the child is doing.",
+    "🏫 がっこう・ようちえん で ごあいさつ": "You are a teacher at a school greeting the child.",
+    "🚀 うちゅうりょこう へ しゅっぱつ": "You are a friendly alien meeting the child in space.",
+    "✍️ パパ・ママが じゆうに 決める": "custom"
+}
+
 # ==========================================
 # ⚙️ おうちのひと用 設定＆セーブ・ロード
 # ==========================================
@@ -175,14 +187,6 @@ with st.expander("🔒 おうちのひとへ（せってい ＆ セーブ・ロ�
     st.markdown("### ✨ あたらしく あそぶ")
     
     child_name = st.text_input("👦👧 おこさまの おなまえ（ひらがな・カタカナ）", value=st.session_state.child_name)
-    
-    sit_options = {
-        "🍔 ハンバーガーやさん で おかいもの": "You are a friendly staff at a hamburger shop.",
-        "🐶 どうぶつえん で ごあいさつ": "You are a friendly zookeeper showing animals.",
-        "🍎 すきな フルーツを えらぼう": "You are a fruit shop owner asking what fruits the child likes.",
-        "🛝 こうえん で あそぼう": "You are a friendly child playing at the park.",
-        "✍️ パパ・ママが じゆうに 決める": "custom"
-    }
     selected_sit_label = st.selectbox("🎬 おはなし（シチュエーション）", list(sit_options.keys()))
     
     if sit_options[selected_sit_label] == "custom":
@@ -191,9 +195,13 @@ with st.expander("🔒 おうちのひとへ（せってい ＆ セーブ・ロ�
     else:
         final_sit = sit_options[selected_sit_label]
 
-    display_mode = st.radio("👀 えいごの みえかた", ["🗣️ カタカナも（おすすめ！）", "🇯🇵 にほんごも", "🔤 えいごだけ"], horizontal=True)
+    if "display_mode" not in st.session_state:
+        st.session_state.display_mode = "🗣️ カタカナも（おすすめ！）"
+    
+    selected_display = st.radio("👀 えいごの みえかた", ["🗣️ カタカナも（おすすめ！）", "🇯🇵 にほんごも", "🔤 えいごだけ"], horizontal=True, index=["🗣️ カタカナも（おすすめ！）", "🇯🇵 にほんごも", "🔤 えいごだけ"].index(st.session_state.display_mode))
 
     if st.button("🚀 この おはなし で あたらしく はじめる！", type="primary"):
+        st.session_state.display_mode = selected_display
         st.session_state.child_name = child_name
         st.session_state.final_sit = final_sit
         st.session_state.kids_stamps = 0
@@ -271,7 +279,8 @@ with st.expander("🔒 おうちのひとへ（せってい ＆ セーブ・ロ�
 if st.session_state.kids_state == "playing" and st.session_state.get("pending_levelup"):
     st.balloons()
     
-    with st.container(border=True):
+    # ★修正：border=Falseでシンプルなコンテナにし、中の赤枠CSSも削除
+    with st.container():
         st.markdown("<div class='levelup-box'>", unsafe_allow_html=True)
         st.markdown("<h2 style='text-align:center; color: #FF6B6B;'>🎉 よく がんばったね！</h2>", unsafe_allow_html=True)
         st.markdown("<h3 style='text-align:center;'>ほしが ５つ あつまったよ。<br>つぎは どうする？</h3>", unsafe_allow_html=True)
@@ -340,16 +349,15 @@ if st.session_state.kids_state == "playing" and st.session_state.kids_data:
         # --- 前半：AIの質問 ---
         st.write("🤖 **えいご の しつもん**")
         
-        if display_mode == "🗣️ カタカナも（おすすめ！）":
+        if st.session_state.display_mode == "🗣️ カタカナも（おすすめ！）":
             st.markdown(f'<div class="english-text-container">{apply_ruby_html(data["ai_ruby"])}</div>', unsafe_allow_html=True)
             st.markdown(f'<div class="ja-text">🇯🇵 {data["ai_ja"]}</div>', unsafe_allow_html=True)
-        elif display_mode == "🇯🇵 にほんごも":
+        elif st.session_state.display_mode == "🇯🇵 にほんごも":
             st.markdown(f'<div class="english-text-container">{data["ai_en"]}</div>', unsafe_allow_html=True)
             st.markdown(f'<div class="ja-text">🇯🇵 {data["ai_ja"]}</div>', unsafe_allow_html=True)
         else:
             st.markdown(f'<div class="english-text-container">{data["ai_en"]}</div>', unsafe_allow_html=True)
             
-        # 質問の音声自動再生（標準プレイヤーへ差し戻し）
         speak_text = clean_text_for_tts(data["ai_en"])
         try:
             tts = gTTS(text=speak_text, lang='en')
@@ -367,10 +375,10 @@ if st.session_state.kids_state == "playing" and st.session_state.kids_data:
         col_hint_txt, col_hint_btn = st.columns([3, 1]) 
         
         with col_hint_txt:
-            if display_mode == "🗣️ カタカナも（おすすめ！）":
+            if st.session_state.display_mode == "🗣️ カタカナも（おすすめ！）":
                 st.markdown(f'<div class="english-text-container">{apply_ruby_html(data["hint_ruby"])}</div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="ja-text">🇯🇵 {data["hint_ja"]}</div>', unsafe_allow_html=True)
-            elif display_mode == "🇯🇵 にほんごも":
+            elif st.session_state.display_mode == "🇯🇵 にほんごも":
                 st.markdown(f'<div class="english-text-container">{data["hint_en"]}</div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="ja-text">🇯🇵 {data["hint_ja"]}</div>', unsafe_allow_html=True)
             else:
@@ -517,3 +525,55 @@ if st.session_state.kids_state == "playing" and st.session_state.kids_data:
                         st.error("エラーが おきたよ。")
             else:
                 st.warning("これいじょう かんたん に できないよ！「とばす」をおしてみてね。")
+                
+    # ★追加：会話の途中でシチュエーションを変える機能
+    st.markdown("---")
+    with st.expander("🔄 べつの おはなし（シチュエーション）に かえる"):
+        st.write("※レベルや ほし の かず は そのまま だよ！")
+        new_sit_label = st.selectbox("あたらしい おはなし を えらんでね", list(sit_options.keys()), key="change_sit_selectbox")
+        
+        if sit_options[new_sit_label] == "custom":
+            new_custom_sit = st.text_input("あたらしい シチュエーション（おうちのひと用）", "例: まほうのくに", key="change_sit_custom")
+            new_final_sit = new_custom_sit
+        else:
+            new_final_sit = sit_options[new_sit_label]
+            
+        if st.button("🚀 この おはなし に かえる！", type="primary", use_container_width=True):
+            st.session_state.final_sit = new_final_sit
+            st.session_state.kids_feedback = ""
+            st.session_state.last_audio_hash = None
+            
+            kids_instruction = f"""
+            あなたは、日本の子供に英語を教える優しい先生です。
+            シチュエーション: {st.session_state.final_sit}
+            子供の名前: {st.session_state.child_name}
+
+            【厳守する出力フォーマット】必ず以下のXMLタグのみで出力してください。
+            <ai_en>（あなたが子供に投げかける英語の質問。1文のみ）</ai_en>
+            <ai_ja>（上の英語の【日本語の意味】をひらがなで書いたもの。絶対に英語の読み方は書かないこと。例: なにがすき？）</ai_ja>
+            <ai_ruby>（上の英語に「Word(カタカナ)」でルビを振ったもの。例: What(ホワット) is(イズ) it?(イット)）</ai_ruby>
+            <hint_en>（子供が真似して答えるための英語の答え）</hint_en>
+            <hint_ja>（上の答えの【日本語の意味】をひらがなで書いたもの。絶対に英語の読み方は書かないこと。例: りんごがすきだよ。）</hint_ja>
+            <hint_ruby>（上の答えのルビ付き。例: I(アイ) like(ライク) apples.(アップルズ)）</hint_ruby>
+            """
+            
+            with st.spinner("あたらしい おはなし の じゅんび を しているよ..."):
+                try:
+                    # 会話履歴をリセットして新しくスタート（レベルは維持）
+                    model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=kids_instruction)
+                    st.session_state.kids_chat = model.start_chat(history=[])
+                    
+                    hint_rule = get_hint_length_rule(st.session_state.kids_level)
+                    res = st.session_state.kids_chat.send_message(f"シチュエーションが変わりました。レベル{st.session_state.kids_level}の質問をしてください。\n子供向けの答えのヒント（<hint_en>）は【{hint_rule}】で作成してください。")
+                    
+                    st.session_state.kids_data = {
+                        "ai_en": extract_tag(res.text, "ai_en"),
+                        "ai_ja": extract_tag(res.text, "ai_ja"),
+                        "ai_ruby": extract_tag(res.text, "ai_ruby"),
+                        "hint_en": extract_tag(res.text, "hint_en"),
+                        "hint_ja": extract_tag(res.text, "hint_ja"),
+                        "hint_ruby": extract_tag(res.text, "hint_ruby"),
+                    }
+                    st.rerun()
+                except Exception as e:
+                    st.error("エラーが おきたよ。")
