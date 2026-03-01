@@ -3,6 +3,7 @@ import google.generativeai as genai
 from gtts import gTTS
 import io
 import re
+import PyPDF2  # ★追加：PDF読み込み用
 
 # === 🎨 デザインカスタマイズ ===
 st.markdown("""
@@ -46,7 +47,9 @@ if "shadowing_history" not in st.session_state:
 # 1. 教材セットアップエリア
 # ==========================================
 st.header("📂 1. 教材の準備")
-setup_tab1, setup_tab2, setup_tab3 = st.tabs(["🔄 ロールプレイから引継ぐ", "✨ AIにおまかせ生成", "📝 自分で英文を入力"])
+
+# ★追加：「ファイルを読み込む」タブを4つ目として追加
+setup_tab1, setup_tab2, setup_tab3, setup_tab4 = st.tabs(["🔄 ロールプレイから引継ぐ", "✨ AIにおまかせ生成", "📝 自分で英文を入力", "📁 ファイルを読み込む"])
 
 if "shadowing_script" not in st.session_state:
     st.session_state.shadowing_script = ""
@@ -64,8 +67,8 @@ with setup_tab1:
         if script:
             st.session_state.shadowing_script = script.strip()
             st.session_state.pop("shadowing_chunks", None)
-            st.session_state.shadowing_history = [] # 履歴リセット
-            st.session_state.pop("shadowing_evaluation", None) # 評価リセット
+            st.session_state.shadowing_history = []
+            st.session_state.pop("shadowing_evaluation", None)
             st.success("読み込み完了！下へ進んでください。")
         else:
             st.warning("履歴が見つかりません。先にロールプレイモードで会話してください。")
@@ -106,8 +109,8 @@ with setup_tab2:
             """
             st.session_state.shadowing_script = ai.generate_content(prompt).text
             st.session_state.pop("shadowing_chunks", None)
-            st.session_state.shadowing_history = [] # 履歴リセット
-            st.session_state.pop("shadowing_evaluation", None) # 評価リセット
+            st.session_state.shadowing_history = [] 
+            st.session_state.pop("shadowing_evaluation", None) 
             st.success("生成完了！下へ進んでください。")
 
 # タブ3：フリー入力
@@ -117,11 +120,46 @@ with setup_tab3:
         if manual_text.strip():
             st.session_state.shadowing_script = manual_text.strip()
             st.session_state.pop("shadowing_chunks", None)
-            st.session_state.shadowing_history = [] # 履歴リセット
-            st.session_state.pop("shadowing_evaluation", None) # 評価リセット
+            st.session_state.shadowing_history = [] 
+            st.session_state.pop("shadowing_evaluation", None) 
             st.success("セット完了！下へ進んでください。")
         else:
             st.warning("英文を入力してください。")
+
+# ★追加：タブ4：ファイル読み込み
+with setup_tab4:
+    st.write("📄 **PDFやテキストファイルから英文だけを抽出します。**")
+    uploaded_file = st.file_uploader("スクリプトや教材ファイル（.txt または .pdf）", type=["txt", "pdf"])
+    
+    if st.button("このファイルから英文を抽出する"):
+        if uploaded_file:
+            with st.spinner("ファイルから英文だけを抽出中..."):
+                try:
+                    raw_text = ""
+                    # ファイルのテキストを読み込む
+                    if uploaded_file.name.endswith('.pdf'):
+                        reader = PyPDF2.PdfReader(uploaded_file)
+                        raw_text = "".join([page.extract_text() + "\n" for page in reader.pages])
+                    else:
+                        raw_text = uploaded_file.read().decode('utf-8')
+                    
+                    if raw_text.strip():
+                        # AIに「英文だけ」を抜き出させる（通信料の安いモデルを使用）
+                        ai = genai.GenerativeModel("gemini-2.5-flash-lite")
+                        extract_prompt = f"以下のテキストから、英語の文章（セリフやスクリプト）のみを抽出してください。日本語の解説や目次、不要な記号などは完全に除外し、純粋な英語のテキストだけを出力してください。\n\n{raw_text}"
+                        extracted_text = ai.generate_content(extract_prompt).text
+                        
+                        st.session_state.shadowing_script = extracted_text.strip()
+                        st.session_state.pop("shadowing_chunks", None)
+                        st.session_state.shadowing_history = []
+                        st.session_state.pop("shadowing_evaluation", None)
+                        st.success("ファイルの読み込みと英文抽出が完了しました！下へ進んでください。")
+                    else:
+                        st.warning("ファイルからテキストを読み込めませんでした。")
+                except Exception as e:
+                    st.error(f"ファイルの読み込み中にエラーが発生しました: {e}")
+        else:
+            st.warning("ファイルをアップロードしてください。")
 
 st.markdown("---")
 
@@ -213,7 +251,7 @@ if "shadowing_chunks" in st.session_state and st.session_state.shadowing_chunks:
                             user_spoken = res.text.strip() if res.parts else ""
                             st.write(f"🎤 あなたの発音: **{user_spoken}**")
 
-                            # 判定
+                            # 判定（記号無視）
                             judge_prompt = f"""
                             お手本:「{chunk['en']}」
                             発音:「{user_spoken}」
@@ -228,7 +266,7 @@ if "shadowing_chunks" in st.session_state and st.session_state.shadowing_chunks:
                             judge_text = judge_res.text.strip()
                             st.success(f"🤖 判定: {judge_text}")
                             
-                            # ★判定履歴を保存（総評の材料になります）
+                            # 判定履歴を保存
                             st.session_state.shadowing_history.append({
                                 "お手本": chunk['en'],
                                 "ユーザー発音": user_spoken,
@@ -241,7 +279,7 @@ if "shadowing_chunks" in st.session_state and st.session_state.shadowing_chunks:
     st.markdown("---")
     
     # ==========================================
-    # 3. 総評エリア (★追加機能)
+    # 3. 総評エリア
     # ==========================================
     st.header("🏆 3. 今日の総評")
     st.write("シャドーイング練習お疲れ様でした！最後に今日の頑張りをAIコーチに評価してもらいましょう。")
