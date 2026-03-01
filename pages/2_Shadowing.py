@@ -108,7 +108,7 @@ with setup_tab2:
     with col1:
         script_length = st.selectbox("文章のボリューム", ["短め（3〜4文）", "標準（5〜7文）", "長め（8〜10文）"])
     with col2:
-        user_name = st.text_input("あなたの名前（AIが呼びかけに使います）", value="masa")
+        user_name = st.text_input("あなたの名前（AIが呼びかけに使います）", value="Naoyuki")
         
     sit = st.text_input("シチュエーション", "例: 空港での入国審査")
     
@@ -147,7 +147,7 @@ with setup_tab3:
         else:
             st.warning("英文を入力してください。")
 
-# ★追加・改善：タブ4：高度なファイル読み込み
+# タブ4：高度なファイル読み込み
 with setup_tab4:
     st.write("📄 **PDFやテキストファイルから英文だけを抽出し、好きな部分だけをスクリプトにします。**")
     uploaded_file = st.file_uploader("スクリプトや教材ファイル（.txt または .pdf）", type=["txt", "pdf"])
@@ -168,10 +168,9 @@ with setup_tab4:
                         extract_prompt = f"以下のテキストから、英語の文章（セリフやスクリプト）のみを抽出してください。日本語の解説や目次、不要な記号などは完全に除外し、純粋な英語のテキストだけを出力してください。改行は元の文章のまとまりを維持してください。\n\n{raw_text}"
                         extracted_text = ai.generate_content(extract_prompt).text
                         
-                        # 抽出結果を改行ごとにリスト化
                         blocks = [b.strip() for b in extracted_text.split('\n') if b.strip()]
                         st.session_state.extracted_blocks = blocks
-                        st.session_state.block_checks = [True] * len(blocks) # デフォルトは全てチェックON
+                        st.session_state.block_checks = [True] * len(blocks)
                         st.success("抽出完了！下のリストで不要な行のチェックを外してください。")
                     else:
                         st.warning("ファイルからテキストを読み込めませんでした。")
@@ -192,7 +191,6 @@ with setup_tab4:
             st.session_state.block_checks = [False] * len(st.session_state.extracted_blocks)
             st.rerun()
             
-        # チェックボックスの描画
         for idx, block in enumerate(st.session_state.extracted_blocks):
             st.session_state.block_checks[idx] = st.checkbox(block, value=st.session_state.block_checks[idx], key=f"chk_{idx}")
             
@@ -212,7 +210,6 @@ with setup_tab4:
                 st.session_state.pop("shadowing_chunks", None)
                 st.session_state.shadowing_history = []
                 st.session_state.pop("shadowing_evaluation", None)
-                # キャッシュをクリアして画面をスッキリさせる
                 st.session_state.pop("extracted_blocks", None)
                 st.session_state.pop("manual_edit_text", None)
                 st.success("セット完了！下へ進んでください。")
@@ -229,23 +226,31 @@ st.header("🏋️ 2. トレーニング")
 
 if st.session_state.shadowing_script:
     
-    # ★追加：練習中いつでもスクリプトを再編集できる機能
-    st.write("📖 **現在のスクリプト（練習中でも自由に編集できます）**")
-    edited_script = st.text_area("長すぎる箇所や難しい単語があれば自由に書き換えて、下の「更新」ボタンを押してください。", value=st.session_state.shadowing_script, height=150)
+    st.write("📖 **現在のスクリプト（全体・ブロック再生）**")
     
-    if st.button("🔄 スクリプトを更新して音声をリセットする"):
-        st.session_state.shadowing_script = edited_script.strip()
-        st.session_state.pop("shadowing_chunks", None) # 古い分割データを破棄
-        st.session_state.shadowing_history = []
-        st.success("スクリプトを更新しました！お手本音声も新しく作られます。")
-        st.rerun()
+    block_display_mode = st.radio("👀 画面表示モード", ["英語を表示", "ブラインド（文字を隠す）"], horizontal=True, key="block_display")
+    
+    if block_display_mode == "英語を表示":
+        edited_script = st.text_area("長すぎる箇所や難しい単語があれば自由に書き換えて、下の「更新」ボタンを押してください。", value=st.session_state.shadowing_script, height=150)
+        if st.button("🔄 スクリプトを更新して音声をリセットする"):
+            st.session_state.shadowing_script = edited_script.strip()
+            st.session_state.pop("shadowing_chunks", None)
+            st.session_state.shadowing_history = []
+            st.success("スクリプトを更新しました！お手本音声も新しく作られます。")
+            st.rerun()
+    else:
+        st.info("🔒 ブラインドモード起動中（テキスト編集エリアを隠しています。耳だけを頼りにシャドーイングしましょう！）")
 
-    st.write("") # スペース確保
+    st.write("") 
     
-    # ブロック分割表示（長文対策）
+    # ブロック分割表示
     script_blocks = split_script_into_blocks(st.session_state.shadowing_script)
     for idx, block in enumerate(script_blocks):
-        st.info(block)
+        if block_display_mode == "英語を表示":
+            st.info(block)
+        else:
+            st.info("🔒 *(Text Hidden - 耳だけを頼りに！)*")
+            
         if st.button(f"🔊 パート {idx + 1} のお手本を聞く", key=f"play_part_{idx}"):
             with st.spinner("音声を生成中..."):
                 speak_text = clean_text_for_tts(block)
@@ -258,7 +263,27 @@ if st.session_state.shadowing_script:
                 except Exception:
                     st.error("音声の生成に失敗しました。")
     
-    st.write("") # スペース確保
+    st.write("")
+    
+    # ★追加機能：ちょこっと翻訳・辞書ツール
+    with st.expander("💡 ちょこっと翻訳・辞書ツール（通信料節約）"):
+        st.write("練習に進む前に、わからない単語やフレーズがあればここへコピペして調べられます。")
+        with st.form("quick_trans_form", clear_on_submit=False):
+            q_text = st.text_input("意味が分からない単語やフレーズ:", placeholder="例: looking forward to")
+            q_btn = st.form_submit_button("日本語の意味を調べる🔍")
+            
+        if q_btn and q_text:
+            with st.spinner("AIがサクッと調べています..."):
+                try:
+                    # 通信料の安いLiteモデルを使用
+                    dict_ai = genai.GenerativeModel("gemini-2.5-flash-lite")
+                    dict_prompt = f"以下の英単語または英語フレーズの日本語の意味を、簡潔にわかりやすく教えてください。\n\n対象: {q_text}"
+                    dict_res = dict_ai.generate_content(dict_prompt)
+                    st.success(f"🇯🇵 **意味:**\n{dict_res.text.strip()}")
+                except Exception as e:
+                    st.error("検索に失敗しました。")
+                    
+    st.write("")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -302,7 +327,7 @@ if st.session_state.shadowing_script:
 # 分割されたチャンクの表示と練習UI
 if "shadowing_chunks" in st.session_state and st.session_state.shadowing_chunks:
     st.write("🎯 **1文ずつの特訓＆AI判定**")
-    display_mode = st.radio("👀 画面表示モード", ["英語 ＋ 和訳", "英語のみ", "ブラインド（文字を隠す）"], horizontal=True)
+    display_mode = st.radio("👀 画面表示モード", ["英語 ＋ 和訳", "英語のみ", "ブラインド（文字を隠す）"], horizontal=True, key="chunk_display")
 
     for i, chunk in enumerate(st.session_state.shadowing_chunks):
         with st.container(border=True):
