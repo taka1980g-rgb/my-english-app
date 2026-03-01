@@ -87,6 +87,15 @@ def extract_tag(text, tag):
     match = re.search(pattern, text, re.DOTALL)
     return match.group(1).strip() if match else ""
 
+# ★追加：レベルに応じたヒントの文数を決める関数
+def get_hint_length_rule(level):
+    if level <= 2:
+        return "1文のみ"
+    elif level <= 4:
+        return "2文"
+    else:
+        return "3文"
+
 st.title("🌟 キッズえいご レッスン 🌟")
 
 # === 💾 データの初期化 ===
@@ -184,7 +193,7 @@ with st.expander("🔒 おうちのひとへ（せってい ＆ セーブ・ロ�
         <ai_en>（あなたが子供に投げかける英語の質問。1文のみ）</ai_en>
         <ai_ja>（上の英語の【日本語の意味】をひらがなで書いたもの。絶対に英語の読み方は書かないこと。例: なにがすき？）</ai_ja>
         <ai_ruby>（上の英語に「Word(カタカナ)」でルビを振ったもの。例: What(ホワット) is(イズ) it?(イット)）</ai_ruby>
-        <hint_en>（子供が真似して答えるための英語の答え。1文のみ）</hint_en>
+        <hint_en>（子供が真似して答えるための英語の答え）</hint_en>
         <hint_ja>（上の答えの【日本語の意味】をひらがなで書いたもの。絶対に英語の読み方は書かないこと。例: りんごがすきだよ。）</hint_ja>
         <hint_ruby>（上の答えのルビ付き。例: I(アイ) like(ライク) apples.(アップルズ)）</hint_ruby>
         """
@@ -193,7 +202,9 @@ with st.expander("🔒 おうちのひとへ（せってい ＆ セーブ・ロ�
             try:
                 model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=kids_instruction)
                 st.session_state.kids_chat = model.start_chat(history=[])
-                res = st.session_state.kids_chat.send_message(f"ゲームスタート。レベル1の超簡単な質問をしてください。")
+                
+                hint_rule = get_hint_length_rule(st.session_state.kids_level)
+                res = st.session_state.kids_chat.send_message(f"ゲームスタート。レベル1の超簡単な質問をしてください。\n子供向けの答えのヒント（<hint_en>）は【{hint_rule}】で作成してください。")
                 
                 st.session_state.kids_data = {
                     "ai_en": extract_tag(res.text, "ai_en"),
@@ -255,7 +266,8 @@ if st.session_state.kids_state == "playing" and st.session_state.get("pending_le
                     st.session_state.pending_levelup = False
                     st.session_state.kids_stamps = 0 
                     
-                    prompt_msg = f"子供は「{st.session_state.last_user_spoken}」と言いました。\n【重要】レベルが{st.session_state.kids_level}に上がりました。さっきより少しだけ難しい質問をして、場面を次に進めてください。"
+                    hint_rule = get_hint_length_rule(st.session_state.kids_level)
+                    prompt_msg = f"子供は「{st.session_state.last_user_spoken}」と言いました。\n【重要】レベルが{st.session_state.kids_level}に上がりました。さっきより少しだけ難しい質問をして、場面を次に進めてください。\nなお、子供向けの答えのヒント（<hint_en>）は【{hint_rule}】で作成してください。"
                     next_res = st.session_state.kids_chat.send_message(prompt_msg)
                     
                     st.session_state.kids_data = {
@@ -274,7 +286,8 @@ if st.session_state.kids_state == "playing" and st.session_state.get("pending_le
                     st.session_state.pending_levelup = False
                     st.session_state.kids_stamps = 0 
                     
-                    prompt_msg = f"子供は「{st.session_state.last_user_spoken}」と言いました。\n【重要】レベルは維持します。絶対に直近と同じ質問や回答パターンにならないよう、物語を進行させてください。"
+                    hint_rule = get_hint_length_rule(st.session_state.kids_level)
+                    prompt_msg = f"子供は「{st.session_state.last_user_spoken}」と言いました。\n【重要】レベルは維持します。絶対に直近と同じ質問や回答パターンにならないよう、物語を進行させてください。\nなお、子供向けの答えのヒント（<hint_en>）は【{hint_rule}】で作成してください。"
                     next_res = st.session_state.kids_chat.send_message(prompt_msg)
                     
                     st.session_state.kids_data = {
@@ -381,18 +394,21 @@ if st.session_state.kids_state == "playing" and st.session_state.kids_data:
                         res = transcriber.generate_content([{"mime_type": "audio/wav", "data": audio_bytes}, "英語を文字起こししてください。文字のみ出力。"])
                         user_spoken = res.text.strip() if res.parts else "（がんばって こえ を だしたよ！）"
                         
-                        # ★修正：記号と大文字小文字を完全に無視するルールを追加
+                        # ★修正：大人版と同じ「鬼判定」ルールを適用し、頭脳をgemini-2.5-flashに格上げ
                         judge_prompt = f"""
                         お手本:「{data['hint_en']}」
                         子供の発音:「{user_spoken}」
-                        【絶対ルール】
-                        相手は英語を始めたばかりの6歳の子供です。
-                        上記2つを比較し、英単語が合っているか判定してください。ただし、ピリオド(.)、カンマ(,)、感嘆符(!)、疑問符(?)などの「記号の有無や違い」、および「大文字・小文字の違い」は【絶対に無視】してください。
-                        純粋に発音された単語が完全に合っている場合のみ「パーフェクト！すごい！」と全力で褒めてください。
-                        もし単語が間違っていたり抜けている場合は、褒めるのはやめて、「おしい！『〇〇』っていってみてね！」や「もういっかい やってみよう！」など、優しく言い直しを促すアドバイスをしてください。
-                        出力はひらがなとカタカナのみ、1〜2文でお願いします。
+                        
+                        【絶対ルール（鬼判定）】
+                        上記2つを比較し、英単語が一言一句完全に一致しているか判定してください。
+                        ただし、ピリオド(.)、カンマ(,)、感嘆符(!)、疑問符(?)などの「記号の有無や違い」、および「大文字・小文字の違い」は【絶対に無視】してください。
+                        
+                        【出力ルール】
+                        ・完全に一致している場合：「パーフェクト！すごい！」とひらがな・カタカナのみで出力してください。
+                        ・1単語でも間違っている、または抜けている場合：褒めるのはやめて、「おしい！『〇〇(間違えた単語や抜けた箇所)』っていってみてね！」と優しくひらがな・カタカナのみで出力してください。
                         """
-                        judge_model = genai.GenerativeModel("gemini-2.5-flash-lite")
+                        # ここだけ賢いモデルを使用
+                        judge_model = genai.GenerativeModel("gemini-2.5-flash")
                         judge_res = judge_model.generate_content(judge_prompt)
                         st.session_state.kids_feedback = f"🎤 きみのこえ: **{user_spoken}**\n\n🌟 AIせんせい: **{judge_res.text.strip()}**"
                         st.rerun()
@@ -416,7 +432,8 @@ if st.session_state.kids_state == "playing" and st.session_state.kids_data:
                             st.session_state.last_user_spoken = user_spoken
                             st.rerun()
                         else:
-                            prompt_msg = f"子供は「{user_spoken}」と言いました。\n【重要】次の展開の質問を出してください。絶対に直近と同じ質問や回答パターンにならないよう、物語を進行させてください。"
+                            hint_rule = get_hint_length_rule(st.session_state.kids_level)
+                            prompt_msg = f"子供は「{user_spoken}」と言いました。\n【重要】次の展開の質問を出してください。絶対に直近と同じ質問や回答パターンにならないよう、物語を進行させてください。\nなお、子供向けの答えのヒント（<hint_en>）は【{hint_rule}】で作成してください。"
                             next_res = st.session_state.kids_chat.send_message(prompt_msg)
                             
                             st.session_state.kids_data = {
@@ -440,7 +457,10 @@ if st.session_state.kids_state == "playing" and st.session_state.kids_data:
                 try:
                     st.session_state.kids_feedback = ""
                     st.session_state.last_audio_hash = None
-                    next_res = st.session_state.kids_chat.send_message("子供が難しがってパスしました。「だいじょうぶだよ！」と短くひらがなで優しく励まして、さっきとは違う展開の質問をしてください。")
+                    
+                    hint_rule = get_hint_length_rule(st.session_state.kids_level)
+                    next_res = st.session_state.kids_chat.send_message(f"子供が難しがってパスしました。「だいじょうぶだよ！」と短くひらがなで優しく励まして、さっきとは違う展開の質問をしてください。\nなお、子供向けの答えのヒント（<hint_en>）は【{hint_rule}】で作成してください。")
+                    
                     st.session_state.kids_data = {
                         "ai_en": extract_tag(next_res.text, "ai_en"),
                         "ai_ja": extract_tag(next_res.text, "ai_ja"),
@@ -461,7 +481,10 @@ if st.session_state.kids_state == "playing" and st.session_state.kids_data:
                     try:
                         st.session_state.kids_feedback = ""
                         st.session_state.last_audio_hash = None
-                        next_res = st.session_state.kids_chat.send_message(f"子供が難しがったため、レベルを{st.session_state.kids_level}に下げました。うんと簡単な短い文にして、ひらがなで短く優しく励ましてください。")
+                        
+                        hint_rule = get_hint_length_rule(st.session_state.kids_level)
+                        next_res = st.session_state.kids_chat.send_message(f"子供が難しがったため、レベルを{st.session_state.kids_level}に下げました。うんと簡単な文にして、ひらがなで短く優しく励ましてください。\nなお、子供向けの答えのヒント（<hint_en>）は【{hint_rule}】で作成してください。")
+                        
                         st.session_state.kids_data = {
                             "ai_en": extract_tag(next_res.text, "ai_en"),
                             "ai_ja": extract_tag(next_res.text, "ai_ja"),
