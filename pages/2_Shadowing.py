@@ -300,8 +300,8 @@ if st.session_state.shadowing_script:
                     tts.write_to_fp(fp)
                     fp.seek(0)
                     st.audio(fp, format="audio/mp3", autoplay=True)
-                except Exception:
-                    st.error("音声の生成に失敗しました。")
+                except Exception as e:
+    st.error(f"音声の生成に失敗しました。詳細: {e}")
     
     st.write("")
     
@@ -335,9 +335,9 @@ if st.session_state.shadowing_script:
                     tts.write_to_fp(fp)
                     fp.seek(0)
                     st.audio(fp, format="audio/mp3", autoplay=True)
-                except Exception:
-                    st.error("音声の生成に失敗しました。")
-
+                except Exception as e:
+    st.error(f"音声の生成に失敗しました。詳細: {e}")
+    
     with col2:
         if st.button("✂️ さらに「1文ずつ」に分割してAI特訓に進む", type="primary", use_container_width=True):
             with st.spinner("AIが和訳と分割を行っています... (※ここで1回だけ通信します)"):
