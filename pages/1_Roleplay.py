@@ -37,12 +37,13 @@ def clean_text_for_tts(text):
     text = re.sub(r"(?<!\w)['\"]|['\"](?!\w)", '', text)
     return text.strip()
 
+# ✨ スピード調整対応 ＆ キャッシュ化
 @st.cache_data
-def get_tts_audio(text, voice="en-US-AriaNeural"):
+def get_tts_audio(text, voice="en-US-AriaNeural", rate="+0%"):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     async def _generate():
-        communicate = edge_tts.Communicate(text, voice)
+        communicate = edge_tts.Communicate(text, voice, rate=rate)
         audio_data = b""
         async for chunk in communicate.stream():
             if chunk["type"] == "audio":
@@ -71,10 +72,23 @@ def get_cached_dictionary(word, model_name):
 
 st.title("My English Roleplay AI 🗣️")
 
+if "rp_audio_speed" not in st.session_state: st.session_state.rp_audio_speed = "🐰 ふつう"
+
 with st.sidebar:
     st.header("⚙️ 設定メニュー")
     model_options = {"賢い・やや遅い": "gemini-2.5-flash", "最速・低コスト": "gemini-2.5-flash-lite"}
     selected_model = model_options[st.selectbox("使用中の脳みそ", list(model_options.keys()), index=0)]
+    
+    # ✨ スピード調整UIを追加
+    st.markdown("---")
+    st.write("🐢 **音声のスピード**")
+    st.session_state.rp_audio_speed = st.radio(
+        "スピード", 
+        ["🐰 ふつう", "🐢 ゆっくり"], 
+        index=0 if st.session_state.rp_audio_speed == "🐰 ふつう" else 1,
+        label_visibility="collapsed",
+        horizontal=True
+    )
     
     st.markdown("---")
     st.write("📂 **設定の読み込み**")
@@ -118,6 +132,9 @@ with st.sidebar:
         st.session_state.stats_mistakes = 0
     st.write(f"- 発話ターン数: {st.session_state.stats_turns} 回")
     st.write(f"- リピート練習: {st.session_state.stats_mistakes} 回")
+
+# スピード設定の適用
+audio_rate = "-25%" if st.session_state.rp_audio_speed == "🐢 ゆっくり" else "+0%"
 
 system_instruction = f"""
 あなたは英会話のロールプレイング相手です。
@@ -184,7 +201,8 @@ if "chat_session" in st.session_state:
                 if raw_text:
                     try:
                         speak_text = clean_text_for_tts(raw_text)
-                        audio_bytes = get_tts_audio(speak_text) # ←キャッシュ化により爆速化
+                        # キャッシュ化＆スピード設定反映
+                        audio_bytes = get_tts_audio(speak_text, rate=audio_rate) 
                         auto_play = False
                         if i == len(st.session_state.messages) - 1 and st.session_state.last_played_msg_idx != i:
                             auto_play = True
