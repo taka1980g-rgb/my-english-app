@@ -48,6 +48,7 @@ def clean_text_for_tts(text):
     return text.strip()
 
 # === 🗣️ Edge TTS 音声生成関数 ===
+@st.cache_data
 def get_tts_audio(text, voice="en-US-AriaNeural"):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
