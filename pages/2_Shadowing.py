@@ -4,7 +4,7 @@ from gtts import gTTS
 import io
 import re
 import PyPDF2
-from datetime import datetime  # ★追加：日付取得用
+from datetime import datetime
 
 # === 🎨 デザインカスタマイズ ===
 st.markdown("""
@@ -129,11 +129,14 @@ with setup_tab2:
             3. 地名、職業、その他固有名詞が必要な場合は、AI自身が自然な架空の名称を考えて、具体的な単語として出力してください。
             4. 出力は英語のセリフのみとしてください（日本語の解説や前置きは一切不要）。
             """
-            st.session_state.shadowing_script = ai.generate_content(prompt).text
-            st.session_state.pop("shadowing_chunks", None)
-            st.session_state.shadowing_history = [] 
-            st.session_state.pop("shadowing_evaluation", None) 
-            st.success("生成完了！下へ進んでください。")
+            try:
+                st.session_state.shadowing_script = ai.generate_content(prompt).text
+                st.session_state.pop("shadowing_chunks", None)
+                st.session_state.shadowing_history = [] 
+                st.session_state.pop("shadowing_evaluation", None) 
+                st.success("生成完了！下へ進んでください。")
+            except Exception as e:
+                st.error(f"生成エラー: {e}")
 
 # タブ3：フリー入力
 with setup_tab3:
@@ -148,7 +151,7 @@ with setup_tab3:
         else:
             st.warning("英文を入力してください。")
 
-# ★改良：タブ4：高度なファイル読み込み（直接セット機能の追加）
+# タブ4：高度なファイル読み込み
 with setup_tab4:
     st.write("📄 **PDFやテキストファイルから英文を読み込みます。**")
     uploaded_file = st.file_uploader("スクリプトや教材ファイル（.txt または .pdf）", type=["txt", "pdf"])
@@ -207,7 +210,7 @@ with setup_tab4:
                     except Exception as e:
                         st.error(f"ファイルの読み込み中にエラーが発生しました: {e}")
 
-    # 取捨選択エリア（抽出を選んだ場合のみ表示）
+    # 取捨選択エリア
     if st.session_state.get("extracted_blocks"):
         st.markdown("### ✂️ ② 取捨選択（不要なものはチェックを外す）")
         
@@ -254,7 +257,6 @@ st.header("🏋️ 2. トレーニング")
 
 if st.session_state.shadowing_script:
     
-    # ★追加：現在の台本を保存するボタン
     col_title, col_save = st.columns([2, 1])
     with col_title:
         st.write("📖 **現在のスクリプト（全体・ブロック再生）**")
@@ -294,14 +296,17 @@ if st.session_state.shadowing_script:
         if st.button(f"🔊 パート {idx + 1} のお手本を聞く", key=f"play_part_{idx}"):
             with st.spinner("音声を生成中..."):
                 speak_text = clean_text_for_tts(block)
-                try:
-                    tts = gTTS(text=speak_text, lang='en')
-                    fp = io.BytesIO()
-                    tts.write_to_fp(fp)
-                    fp.seek(0)
-                    st.audio(fp, format="audio/mp3", autoplay=True)
-                except Exception as e:
-    st.error(f"音声の生成に失敗しました。詳細: {e}")
+                if not speak_text:
+                    st.warning("音声化できるテキストがありません。")
+                else:
+                    try:
+                        tts = gTTS(text=speak_text, lang='en')
+                        fp = io.BytesIO()
+                        tts.write_to_fp(fp)
+                        fp.seek(0)
+                        st.audio(fp, format="audio/mp3", autoplay=True)
+                    except Exception as e:
+                        st.error(f"音声の生成に失敗しました。詳細: {e}")
     
     st.write("")
     
@@ -320,7 +325,7 @@ if st.session_state.shadowing_script:
                     dict_res = dict_ai.generate_content(dict_prompt)
                     st.success(f"🇯🇵 **意味:**\n{dict_res.text.strip()}")
                 except Exception as e:
-                    st.error("検索に失敗しました。")
+                    st.error(f"検索に失敗しました: {e}")
                     
     st.write("")
     
@@ -329,15 +334,18 @@ if st.session_state.shadowing_script:
         if st.button("🔊 全文のお手本を一気に通しで聞く", use_container_width=True):
             with st.spinner("音声を生成中...（長文の場合は数秒かかります）"):
                 speak_text = clean_text_for_tts(st.session_state.shadowing_script)
-                try:
-                    tts = gTTS(text=speak_text, lang='en')
-                    fp = io.BytesIO()
-                    tts.write_to_fp(fp)
-                    fp.seek(0)
-                    st.audio(fp, format="audio/mp3", autoplay=True)
-                except Exception as e:
-    st.error(f"音声の生成に失敗しました。詳細: {e}")
-    
+                if not speak_text:
+                    st.warning("音声化できるテキストがありません。")
+                else:
+                    try:
+                        tts = gTTS(text=speak_text, lang='en')
+                        fp = io.BytesIO()
+                        tts.write_to_fp(fp)
+                        fp.seek(0)
+                        st.audio(fp, format="audio/mp3", autoplay=True)
+                    except Exception as e:
+                        st.error(f"音声の生成に失敗しました。詳細: {e}")
+
     with col2:
         if st.button("✂️ さらに「1文ずつ」に分割してAI特訓に進む", type="primary", use_container_width=True):
             with st.spinner("AIが和訳と分割を行っています... (※ここで1回だけ通信します)"):
@@ -358,12 +366,14 @@ if st.session_state.shadowing_script:
                             en, ja = line.split('||', 1)
                             chunks.append({"en": en.strip(), "ja": ja.strip()})
                     st.session_state.shadowing_chunks = chunks
-                except Exception:
-                    st.error("分割に失敗しました。もう一度試してください。")
+                except Exception as e:
+                    st.error(f"分割に失敗しました。詳細: {e}")
 
     st.markdown("---")
 
+# ==========================================
 # 分割されたチャンクの表示と練習UI
+# ==========================================
 if "shadowing_chunks" in st.session_state and st.session_state.shadowing_chunks:
     st.write("🎯 **1文ずつの特訓＆AI判定**")
     display_mode = st.radio("👀 画面表示モード", ["英語 ＋ 和訳", "英語のみ", "ブラインド（文字を隠す）"], horizontal=True, key="chunk_display")
@@ -379,14 +389,15 @@ if "shadowing_chunks" in st.session_state and st.session_state.shadowing_chunks:
                 st.markdown("🔒 *(Text Hidden - 耳だけを頼りに！)*")
 
             speak_text = clean_text_for_tts(chunk['en'])
-            try:
-                tts = gTTS(text=speak_text, lang='en')
-                fp = io.BytesIO()
-                tts.write_to_fp(fp)
-                fp.seek(0)
-                st.audio(fp, format="audio/mp3")
-            except Exception:
-                pass
+            if speak_text:
+                try:
+                    tts = gTTS(text=speak_text, lang='en')
+                    fp = io.BytesIO()
+                    tts.write_to_fp(fp)
+                    fp.seek(0)
+                    st.audio(fp, format="audio/mp3")
+                except Exception as e:
+                    st.error(f"音声生成エラー: {e}")
 
             test_audio = st.audio_input("マイクで録音する", key=f"sh_mic_{i}")
             if test_audio:
@@ -418,8 +429,8 @@ if "shadowing_chunks" in st.session_state and st.session_state.shadowing_chunks:
                                 "AI判定": judge_text
                             })
                             
-                        except Exception:
-                            st.error("エラーが発生しました。")
+                        except Exception as e:
+                            st.error(f"判定エラーが発生しました: {e}")
 
     st.markdown("---")
     
@@ -469,7 +480,7 @@ if "shadowing_chunks" in st.session_state and st.session_state.shadowing_chunks:
                     
                     st.session_state.shadowing_evaluation = eval_res.text.strip()
                 except Exception as e:
-                    st.error(f"評価の作成に失敗しました。{e}")
+                    st.error(f"評価の作成に失敗しました。詳細: {e}")
                     
     if "shadowing_evaluation" in st.session_state:
         st.success("🎉 **AIコーチからの総評**")
