@@ -1,10 +1,11 @@
 import streamlit as st
 import google.generativeai as genai
-from gtts import gTTS
 import io
 import re
 import PyPDF2
 from datetime import datetime
+import asyncio
+import edge_tts
 
 # === 🎨 デザインカスタマイズ ===
 st.markdown("""
@@ -59,6 +60,24 @@ def split_script_into_blocks(text, max_words=130):
         blocks.append(" ".join(current_block))
         
     return blocks
+
+# === 🗣️ Edge TTS 音声生成関数 ===
+def get_tts_audio(text, voice="en-US-AriaNeural"):
+    # Streamlit特有の非同期エラーを回避するための安全なラッパー
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    async def _generate():
+        communicate = edge_tts.Communicate(text, voice)
+        audio_data = b""
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                audio_data += chunk["data"]
+        return audio_data
+        
+    result = loop.run_until_complete(_generate())
+    loop.close()
+    return result
 
 st.title("🎧 シャドーイング道場")
 st.write("お手本を聞いて、限界まで自力で練習！自信がついたらAIの厳格チェックに挑みましょう。")
@@ -294,17 +313,14 @@ if st.session_state.shadowing_script:
             st.info("🔒 *(Text Hidden - 耳だけを頼りに！)*")
             
         if st.button(f"🔊 パート {idx + 1} のお手本を聞く", key=f"play_part_{idx}"):
-            with st.spinner("音声を生成中..."):
+            with st.spinner("高品質な音声を生成中..."):
                 speak_text = clean_text_for_tts(block)
                 if not speak_text:
                     st.warning("音声化できるテキストがありません。")
                 else:
                     try:
-                        tts = gTTS(text=speak_text, lang='en')
-                        fp = io.BytesIO()
-                        tts.write_to_fp(fp)
-                        fp.seek(0)
-                        st.audio(fp, format="audio/mp3", autoplay=True)
+                        audio_bytes = get_tts_audio(speak_text)
+                        st.audio(audio_bytes, format="audio/mp3", autoplay=True)
                     except Exception as e:
                         st.error(f"音声の生成に失敗しました。詳細: {e}")
     
@@ -332,17 +348,14 @@ if st.session_state.shadowing_script:
     col1, col2 = st.columns(2)
     with col1:
         if st.button("🔊 全文のお手本を一気に通しで聞く", use_container_width=True):
-            with st.spinner("音声を生成中...（長文の場合は数秒かかります）"):
+            with st.spinner("高品質な音声を生成中...（長文の場合は数秒かかります）"):
                 speak_text = clean_text_for_tts(st.session_state.shadowing_script)
                 if not speak_text:
                     st.warning("音声化できるテキストがありません。")
                 else:
                     try:
-                        tts = gTTS(text=speak_text, lang='en')
-                        fp = io.BytesIO()
-                        tts.write_to_fp(fp)
-                        fp.seek(0)
-                        st.audio(fp, format="audio/mp3", autoplay=True)
+                        audio_bytes = get_tts_audio(speak_text)
+                        st.audio(audio_bytes, format="audio/mp3", autoplay=True)
                     except Exception as e:
                         st.error(f"音声の生成に失敗しました。詳細: {e}")
 
@@ -391,11 +404,8 @@ if "shadowing_chunks" in st.session_state and st.session_state.shadowing_chunks:
             speak_text = clean_text_for_tts(chunk['en'])
             if speak_text:
                 try:
-                    tts = gTTS(text=speak_text, lang='en')
-                    fp = io.BytesIO()
-                    tts.write_to_fp(fp)
-                    fp.seek(0)
-                    st.audio(fp, format="audio/mp3")
+                    audio_bytes = get_tts_audio(speak_text)
+                    st.audio(audio_bytes, format="audio/mp3")
                 except Exception as e:
                     st.error(f"音声生成エラー: {e}")
 
