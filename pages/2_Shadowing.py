@@ -62,6 +62,7 @@ def split_script_into_blocks(text, max_words=130):
     return blocks
 
 # === 🗣️ Edge TTS 音声生成関数 ===
+@st.cache_data
 def get_tts_audio(text, voice="en-US-AriaNeural"):
     # Streamlit特有の非同期エラーを回避するための安全なラッパー
     loop = asyncio.new_event_loop()
