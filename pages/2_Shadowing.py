@@ -51,12 +51,13 @@ def split_script_into_blocks(text, max_words=130):
     if current_block: blocks.append(" ".join(current_block))
     return blocks
 
+# ✨ スピード調整対応 ＆ キャッシュ化
 @st.cache_data
-def get_tts_audio(text, voice="en-US-AriaNeural"):
+def get_tts_audio(text, voice="en-US-AriaNeural", rate="+0%"):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     async def _generate():
-        communicate = edge_tts.Communicate(text, voice)
+        communicate = edge_tts.Communicate(text, voice, rate=rate)
         audio_data = b""
         async for chunk in communicate.stream():
             if chunk["type"] == "audio":
@@ -222,7 +223,22 @@ st.markdown("---")
 # ==========================================
 st.header("🏋️ 2. トレーニング")
 
+if "sh_audio_speed" not in st.session_state: st.session_state.sh_audio_speed = "🐰 ふつう"
+
 if st.session_state.shadowing_script:
+    
+    # ✨ スピード調整UIを追加
+    st.write("🐢 **お手本音声のスピード**")
+    st.session_state.sh_audio_speed = st.radio(
+        "スピード", 
+        ["🐰 ふつう", "🐢 ゆっくり (-25%)"], 
+        index=0 if st.session_state.sh_audio_speed == "🐰 ふつう" else 1,
+        label_visibility="collapsed",
+        horizontal=True
+    )
+    # スピード設定の適用
+    audio_rate = "-25%" if st.session_state.sh_audio_speed == "🐢 ゆっくり (-25%)" else "+0%"
+
     col_title, col_save = st.columns([2, 1])
     with col_title: st.write("📖 **現在のスクリプト（全体・ブロック再生）**")
     with col_save:
@@ -254,7 +270,8 @@ if st.session_state.shadowing_script:
                 speak_text = clean_text_for_tts(block)
                 if speak_text:
                     try:
-                        audio_bytes = get_tts_audio(speak_text)
+                        # スピード設定反映
+                        audio_bytes = get_tts_audio(speak_text, rate=audio_rate)
                         st.audio(audio_bytes, format="audio/mp3", autoplay=True)
                     except Exception as e:
                         st.error(f"音声の生成に失敗しました。詳細: {e}")
@@ -282,7 +299,8 @@ if st.session_state.shadowing_script:
                 speak_text = clean_text_for_tts(st.session_state.shadowing_script)
                 if speak_text:
                     try:
-                        audio_bytes = get_tts_audio(speak_text)
+                        # スピード設定反映
+                        audio_bytes = get_tts_audio(speak_text, rate=audio_rate)
                         st.audio(audio_bytes, format="audio/mp3", autoplay=True)
                     except Exception as e:
                         st.error(f"音声の生成に失敗: {e}")
@@ -322,7 +340,8 @@ if "shadowing_chunks" in st.session_state and st.session_state.shadowing_chunks:
             speak_text = clean_text_for_tts(chunk['en'])
             if speak_text:
                 try:
-                    audio_bytes = get_tts_audio(speak_text)
+                    # ここもスピード設定反映
+                    audio_bytes = get_tts_audio(speak_text, rate=audio_rate)
                     st.audio(audio_bytes, format="audio/mp3")
                 except Exception: pass
 
