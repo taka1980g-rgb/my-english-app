@@ -1,11 +1,12 @@
 import streamlit as st
 import google.generativeai as genai
-from gtts import gTTS
 import PyPDF2
 import io
 import json
 import re
 from datetime import datetime
+import asyncio
+import edge_tts
 
 # === 🎨 画面デザインのカスタマイズ（CSS） ===
 st.markdown("""
@@ -45,6 +46,23 @@ def clean_text_for_tts(text):
     text = re.sub(r'[*_#~]', '', text)
     text = re.sub(r"(?<!\w)['\"]|['\"](?!\w)", '', text)
     return text.strip()
+
+# === 🗣️ Edge TTS 音声生成関数 ===
+def get_tts_audio(text, voice="en-US-AriaNeural"):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    async def _generate():
+        communicate = edge_tts.Communicate(text, voice)
+        audio_data = b""
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                audio_data += chunk["data"]
+        return audio_data
+        
+    result = loop.run_until_complete(_generate())
+    loop.close()
+    return result
 
 st.title("My English Roleplay AI 🗣️")
 
@@ -195,17 +213,14 @@ if "chat_session" in st.session_state:
                 if raw_text:
                     try:
                         speak_text = clean_text_for_tts(raw_text)
-                        tts = gTTS(text=speak_text, lang='en')
-                        fp = io.BytesIO()
-                        tts.write_to_fp(fp)
-                        fp.seek(0)
+                        audio_bytes = get_tts_audio(speak_text)
                         
                         auto_play = False
                         if i == len(st.session_state.messages) - 1 and st.session_state.last_played_msg_idx != i:
                             auto_play = True
                             st.session_state.last_played_msg_idx = i
                             
-                        st.audio(fp, format="audio/mp3", autoplay=auto_play)
+                        st.audio(audio_bytes, format="audio/mp3", autoplay=auto_play)
                     except Exception:
                         pass
 
@@ -284,7 +299,6 @@ if "chat_session" in st.session_state:
                         user_spoken = res.text.strip() if res.parts else ""
                         st.write(f"🎤 あなたの発音: **{user_spoken}**")
                         
-                        # ★修正ポイント：記号と大文字小文字を完全に無視させるプロンプト
                         judge_prompt = f"""
                         お手本:「{target_practice_text}」
                         発音:「{user_spoken}」
