@@ -58,12 +58,13 @@ def get_hint_length_rule(level):
     elif level <= 4: return "2文"
     else: return "3文"
 
+# ✨ スピード調整対応 ＆ キャッシュ化
 @st.cache_data
-def get_tts_audio(text, voice="en-US-AriaNeural"):
+def get_tts_audio(text, voice="en-US-AriaNeural", rate="+0%"):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     async def _generate():
-        communicate = edge_tts.Communicate(text, voice)
+        communicate = edge_tts.Communicate(text, voice, rate=rate)
         audio_data = b""
         async for chunk in communicate.stream():
             if chunk["type"] == "audio":
@@ -73,7 +74,6 @@ def get_tts_audio(text, voice="en-US-AriaNeural"):
     loop.close()
     return result
 
-# 【無駄①解消】文字起こし結果をキャッシュして二重通信を防ぐ
 @st.cache_data
 def get_transcription(audio_bytes):
     try:
@@ -96,6 +96,7 @@ if "kids_feedback" not in st.session_state: st.session_state.kids_feedback = ""
 if "pending_levelup" not in st.session_state: st.session_state.pending_levelup = False
 if "last_user_spoken" not in st.session_state: st.session_state.last_user_spoken = ""
 if "kids_display_mode" not in st.session_state: st.session_state.kids_display_mode = "🗣️ カタカナも"
+if "kids_audio_speed" not in st.session_state: st.session_state.kids_audio_speed = "🐰 ふつう"
 if "kids_history_log" not in st.session_state: st.session_state.kids_history_log = []
 
 sit_options = {
@@ -125,6 +126,16 @@ with st.sidebar:
         "表示モード", 
         ["🗣️ カタカナも", "🇯🇵 にほんごも", "🔤 えいごだけ"], 
         index=["🗣️ カタカナも", "🇯🇵 にほんごも", "🔤 えいごだけ"].index(st.session_state.kids_display_mode),
+        label_visibility="collapsed"
+    )
+    st.markdown("---")
+
+    # ✨ ここにスピード調整を追加
+    st.markdown("### 🐢 えいごの はやさ")
+    st.session_state.kids_audio_speed = st.radio(
+        "はやさ", 
+        ["🐰 ふつう", "🐢 ゆっくり"], 
+        index=0 if st.session_state.kids_audio_speed == "🐰 ふつう" else 1,
         label_visibility="collapsed"
     )
     st.markdown("---")
@@ -212,6 +223,9 @@ with st.sidebar:
         today_str = datetime.now().strftime("%Y-%m-%d")
         st.download_button("💾 データをセーブ", data=json.dumps(save_data, ensure_ascii=False, indent=2), file_name=f"{today_str}_kids_save.json", mime="application/json", use_container_width=True)
 
+# 音声のスピード設定を適用（-25%で自然なゆっくりに）
+audio_rate = "-25%" if st.session_state.kids_audio_speed == "🐢 ゆっくり" else "+0%"
+
 # ==========================================
 # 🌟 メイン画面（セットアップ待ち）
 # ==========================================
@@ -269,7 +283,8 @@ if st.session_state.get("pending_levelup"):
                 with st.spinner("おんせいを つくっているよ..."):
                     try:
                         full_text = "".join([f"{item['q_en']} {item['a_en']}. " for item in recent_history])
-                        audio_bytes_all = get_tts_audio(clean_text_for_tts(full_text))
+                        # 通し再生もスピード設定を反映！
+                        audio_bytes_all = get_tts_audio(clean_text_for_tts(full_text), rate=audio_rate)
                         st.audio(audio_bytes_all, format="audio/mp3", autoplay=True)
                     except Exception:
                         pass
@@ -327,7 +342,8 @@ with st.container(border=True):
     with col_q_title: st.write("🤖 **えいご の しつもん**")
     with col_q_audio:
         try:
-            audio_bytes = get_tts_audio(clean_text_for_tts(data["ai_en"]))
+            # AIの質問にもスピード設定を反映
+            audio_bytes = get_tts_audio(clean_text_for_tts(data["ai_en"]), rate=audio_rate)
             st.audio(audio_bytes, format="audio/mp3", autoplay=True)
         except Exception: pass
 
@@ -361,7 +377,8 @@ col_play_hint, col_mic = st.columns([1, 2], vertical_alignment="bottom")
 with col_play_hint:
     if st.button("🔊 おてほん\nを きく", key="btn_hint_audio", use_container_width=True):
         try:
-            audio_bytes_h = get_tts_audio(clean_text_for_tts(data["hint_en"]))
+            # お手本にもスピード設定を反映
+            audio_bytes_h = get_tts_audio(clean_text_for_tts(data["hint_en"]), rate=audio_rate)
             st.audio(audio_bytes_h, format="audio/mp3", autoplay=True)
         except Exception: pass
 
@@ -387,7 +404,7 @@ with col_b1:
     if st.button("🤖 はつおん\nチェック", use_container_width=True):
         if kids_audio:
             with st.spinner("判定中..."):
-                user_spoken = get_transcription(kids_audio.getvalue()) # 無駄①の解消：キャッシュから取得
+                user_spoken = get_transcription(kids_audio.getvalue())
                 judge_prompt = f"お手本:「{data['hint_en']}」\n子供の発音:「{user_spoken}」\n【絶対ルール】相手は6歳の子供。記号や大文字小文字の違いは絶対無視して、英単語が完全一致か判定。完全一致：「パーフェクト！すごい！」不一致：褒めずに「おしい！『〇〇』っていってみてね！」と優しくひらがなで。"
                 judge_model = genai.GenerativeModel("gemini-2.5-flash")
                 judge_res = judge_model.generate_content(judge_prompt)
@@ -400,7 +417,7 @@ with col_b2:
     if st.button("🌟 つぎへ\nすすむ！", type="primary", use_container_width=True):
         if kids_audio:
             with st.spinner("じゅんびちゅう..."):
-                user_spoken = get_transcription(kids_audio.getvalue()) # 無駄①の解消：キャッシュから取得
+                user_spoken = get_transcription(kids_audio.getvalue())
                 
                 turn_data = {
                     "q_en": data["ai_en"], "q_ja": data["ai_ja"], "q_ruby": data["ai_ruby"],
@@ -413,7 +430,6 @@ with col_b2:
                 st.session_state.kids_feedback = ""
                 st.session_state.last_audio_hash = None
                 
-                # 【無駄④の解消】過去の不要な会話履歴をカットして軽くする
                 if len(st.session_state.kids_chat.history) > 6:
                     kids_instruction = f"あなたは日本の子供に英語を教える優しい先生です。シチュエーション: {st.session_state.final_sit}、子供の名前: {st.session_state.child_name}\n【厳守フォーマット】XMLタグのみ。\n<ai_en>（英語の質問。1文のみ）</ai_en><ai_ja>（日本語の意味）</ai_ja><ai_ruby>（ルビ）</ai_ruby>\n<hint_en>（英語の答え）</hint_en><hint_ja>（日本語の意味）</hint_ja><hint_ruby>（ルビ）</hint_ruby>"
                     trimmed_history = st.session_state.kids_chat.history[-6:]
