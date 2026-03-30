@@ -223,21 +223,35 @@ st.markdown("---")
 # ==========================================
 st.header("🏋️ 2. トレーニング")
 
-if "sh_audio_speed" not in st.session_state: st.session_state.sh_audio_speed = "🐰 ふつう"
+# 初期値の設定（1.0倍スタート）
+if "sh_audio_speed" not in st.session_state: 
+    st.session_state.sh_audio_speed = "1.0倍"
+
+audio_rate = "+0%" # スクリプト未セット時のためのデフォルト値
 
 if st.session_state.shadowing_script:
     
-    # ✨ スピード調整UIを追加
+    # ✨ スピード調整UIを追加（スライダー形式）
     st.write("🐢 **お手本音声のスピード**")
-    st.session_state.sh_audio_speed = st.radio(
+    
+    speed_mapping = {
+        "0.5倍": "-50%",
+        "0.6倍": "-40%",
+        "0.7倍": "-30%",
+        "0.8倍": "-20%",
+        "0.9倍": "-10%",
+        "1.0倍": "+0%"
+    }
+    
+    st.session_state.sh_audio_speed = st.select_slider(
         "スピード", 
-        ["🐰 ふつう", "🐢 ゆっくり (-25%)"], 
-        index=0 if st.session_state.sh_audio_speed == "🐰 ふつう" else 1,
-        label_visibility="collapsed",
-        horizontal=True
+        options=list(speed_mapping.keys()),
+        value=st.session_state.sh_audio_speed,
+        label_visibility="collapsed"
     )
+    
     # スピード設定の適用
-    audio_rate = "-25%" if st.session_state.sh_audio_speed == "🐢 ゆっくり (-25%)" else "+0%"
+    audio_rate = speed_mapping[st.session_state.sh_audio_speed]
 
     col_title, col_save = st.columns([2, 1])
     with col_title: st.write("📖 **現在のスクリプト（全体・ブロック再生）**")
