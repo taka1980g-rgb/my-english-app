@@ -49,8 +49,12 @@ if "custom_word_count" not in st.session_state:
 # 1. 問題作成エリア
 # ==========================================
 with st.expander("📝 もんだいを つくる / えらぶ", expanded=not bool(st.session_state.typing_words)):
-    tab1, tab2 = st.tabs(["✨ AIにおまかせ", "✍️ 自分で入力"])
+    # 💡 タブを3つに増やしました
+    tab1, tab2, tab3 = st.tabs(["✨ AIにおまかせ", "✍️ 自分で入力", "💾 ほぞん・よみこみ"])
     
+    # ------------------------------------
+    # タブ1: AIにおまかせ
+    # ------------------------------------
     with tab1:
         col_t, col_n = st.columns([2, 1])
         theme = col_t.selectbox("テーマ", ["どうぶつ", "たべもの", "かず", "いろ", "じゆうに入力"])
@@ -72,6 +76,9 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=not bool
                 except Exception as e:
                     st.error(f"エラー: {e}")
                     
+    # ------------------------------------
+    # タブ2: 自分で入力
+    # ------------------------------------
     with tab2:
         st.write("💡 英単語を入れると、AIが日本語を埋めてくれるよ！")
         
@@ -135,6 +142,47 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=not bool
                 st.rerun()
             else:
                 st.error("単語をいれてね！")
+
+    # ------------------------------------
+    # 💡 タブ3: ほぞん・よみこみ機能
+    # ------------------------------------
+    with tab3:
+        col_load, col_save = st.columns(2)
+        
+        with col_load:
+            st.markdown("#### 📂 もんだいを よみこむ")
+            uploaded_file = st.file_uploader("保存したファイル(.json)をえらんでね", type=["json"])
+            if uploaded_file is not None:
+                try:
+                    loaded_words = json.load(uploaded_file)
+                    st.success(f"{len(loaded_words)}個の単語を読み込みました！")
+                    if st.button("🚀 このもんだいであそぶ！", type="primary", key="load_play_btn"):
+                        st.session_state.typing_words = loaded_words
+                        st.rerun()
+                except Exception:
+                    st.error("ファイルの読み込みに失敗しました。正しいファイルか確認してね。")
+        
+        with col_save:
+            st.markdown("#### 💾 今のもんだいを ほぞん")
+            if st.session_state.typing_words:
+                st.write("いま遊んでいるもんだいを、パソコンに保存できます。")
+                
+                # 日本語が文字化けしないように ensure_ascii=False でJSON化
+                json_data = json.dumps(st.session_state.typing_words, ensure_ascii=False, indent=2)
+                
+                # ファイル名を自由に付けられるようにする
+                save_name = st.text_input("ファイルの名前", value="my_typing_words")
+                
+                st.download_button(
+                    label="💾 ファイルをダウンロード",
+                    data=json_data,
+                    file_name=f"{save_name}.json",
+                    mime="application/json",
+                    type="primary"
+                )
+            else:
+                st.info("💡 もんだいを作成して遊び始めると、ここに「保存ボタン」が表示されます。")
+
 
 # ==========================================
 # 2. タイピングゲームエリア
@@ -225,15 +273,12 @@ if st.session_state.typing_words:
               rankingModal = document.getElementById("ranking-modal"), rankingBody = document.getElementById("ranking-body"),
               entryArea = document.getElementById("entry-area"), playerNameInput = document.getElementById("player-name");
 
-        // 前回の名前を復元
         playerNameInput.value = localStorage.getItem("typing_last_name") || "";
         document.getElementById("rank-word-count").innerText = words.length;
 
         function speak(t) {{ window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(t); u.lang = 'en-US'; u.rate = 0.8; window.speechSynthesis.speak(u); }}
 
-        // ゲームエリアをクリックした時の処理
         function handleGameClick() {{
-            // ランキング画面が出ていない時だけタイピングボックスにフォーカス
             if (rankingModal.style.display !== "flex") {{
                 box.focus({{preventScroll: true}});
             }}
@@ -302,7 +347,6 @@ if st.session_state.typing_words:
         }}
 
         document.addEventListener("keydown", (e) => {{
-            // 入力欄にフォーカスがある時はタイピング判定をスキップ
             if (document.activeElement === playerNameInput) return;
             if (e.key.length > 1) return;
             handleInput(e.key.toLowerCase());
