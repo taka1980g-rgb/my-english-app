@@ -75,11 +75,8 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=not bool
     with tab2:
         st.write("💡 英単語を入れると、AIが日本語を埋めてくれるよ！")
         
-        # 💡 【重要】入力枠を描画する"前"に翻訳処理を行う（エラーや沈黙を完全に防ぐ仕組み）
         if st.session_state.get("trigger_translation"):
-            st.session_state.trigger_translation = False # フラグを下ろす
-            
-            # 翻訳が必要な単語をリストアップ
+            st.session_state.trigger_translation = False
             targets = []
             for i in range(st.session_state.custom_word_count):
                 en = st.session_state.get(f"en_input_{i}", "").strip()
@@ -91,33 +88,24 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=not bool
                 with st.spinner("AIが日本語を調べています..."):
                     try:
                         words_to_translate = [t[1] for t in targets]
-                        prompt = f"""
-                        子供向けアプリ用です。以下の英単語の簡単な日本語訳（ひらがな多め）をJSON配列のみで返してください。
-                        単語: [{', '.join(words_to_translate)}] 
-                        出力例: [{{"en":"dog","ja":"いぬ"}}, {{"en":"apple","ja":"りんご"}}]
-                        """
+                        prompt = f"子供向けアプリ用です。以下の英単語の簡単な日本語訳（ひらがな多め）をJSON配列のみで返してください。 単語: [{', '.join(words_to_translate)}] 出力例: [{{\\\"en\\\":\\\"dog\\\",\\\"ja\\\":\\\"いぬ\\\"}}]"
                         model = genai.GenerativeModel("gemini-2.5-flash")
                         res = model.generate_content(prompt)
-                        
                         json_match = re.search(r'\[.*\]', res.text, re.DOTALL)
                         if json_match:
                             translated = json.loads(json_match.group(0))
                             trans_dict = {item["en"].lower(): item["ja"] for item in translated}
-                            
-                            # Streamlitの内部状態に直接翻訳結果を書き込む
                             for idx, en in targets:
                                 if en.lower() in trans_dict:
                                     st.session_state[f"ja_input_{idx}"] = trans_dict[en.lower()]
                             st.success("日本語を補完しました！")
                         else:
                             st.error("⚠️ AIが正しい形式で返答しませんでした。")
-                            st.info(f"【デバッグ】AIの生データ:\n{res.text}")
                     except Exception as e:
                         st.error(f"⚠️ 翻訳中にエラーが発生しました: {e}")
             else:
-                st.warning("英語が入力されていないか、すべて日本語が埋まっています！")
+                st.warning("英語を入力してください！")
 
-        # 入力枠の描画（上記で翻訳されたデータがあれば、ここで自動的に表示される）
         for i in range(st.session_state.custom_word_count):
             c1, c2 = st.columns(2)
             c1.text_input(f"英語 {i+1}", key=f"en_input_{i}", placeholder="例: apple")
@@ -130,7 +118,6 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=not bool
             st.session_state.custom_word_count += 1
             st.rerun()
 
-        # ボタンを押したらフラグを立ててリロード（これにより先頭の翻訳処理が走る）
         if col_ai.button("🤖 日本語をAIにおまかせ"):
             st.session_state.trigger_translation = True
             st.rerun()
@@ -164,37 +151,63 @@ if st.session_state.typing_words:
         body {{ font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; background: #fff; overflow: hidden; }}
         #prog-bg {{ width: 90%; background: #eee; height: 12px; border-radius: 6px; margin: 10px 0; overflow: hidden; }}
         #prog-bar {{ height: 100%; width: 0%; background: #4CAF50; transition: 0.3s; }}
-        #game {{ width: 95%; max-width: 1000px; height: 320px; background: #fcfcfc; border: 4px solid #87CEFA; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }}
+        #game {{ width: 95%; max-width: 1000px; height: 350px; background: #fcfcfc; border: 4px solid #87CEFA; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }}
         #en {{ font-size: 7rem; font-weight: bold; color: #333; margin: 0; letter-spacing: 4px; line-height: 1.2; }}
         #ja {{ font-size: 2.5rem; color: #666; margin-top: 5px; font-weight: bold; }}
         #msg {{ font-size: 2rem; color: #FF69B4; font-weight: bold; height: 40px; }}
+        #timer-display {{ position: absolute; top: 15px; right: 25px; font-size: 1.5rem; color: #999; font-family: monospace; }}
         .typed {{ color: #ddd; }}
         .current {{ color: #FFA500; text-decoration: underline; }}
-        .shake {{ animation: shake 0.3s; background: #fff5f5 !important; }}
-        @keyframes shake {{ 0%, 100% {{ transform: translateX(0); }} 25% {{ transform: translateX(-8px); }} 50% {{ transform: translateX(8px); }} 75% {{ transform: translateX(-8px); }} }}
         #input-box {{ position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }}
+        #retry-btn {{ 
+            margin-top: 20px; padding: 15px 30px; font-size: 1.5rem; color: white; background: #4CAF50; 
+            border: none; border-radius: 10px; cursor: pointer; display: none; font-weight: bold;
+        }}
+        #retry-btn:hover {{ background: #45a049; }}
     </style>
     </head>
     <body>
         <div id="prog-bg"><div id="prog-bar"></div></div>
         <div id="game" onclick="document.getElementById('input-box').focus({{preventScroll: true}})">
+            <div id="timer-display">TIME: 0.0s</div>
             <div id="en"></div>
             <div id="ja"></div>
             <div id="msg"></div>
+            <button id="retry-btn" onclick="restart()">もういちど あそぶ</button>
             <input type="text" id="input-box" autocomplete="off" autocorrect="off" spellcheck="false">
         </div>
     <script>
         const words = {words_json};
         let idx = 0, typed = "";
+        let startTime = null, timerInterval = null;
+
         const enDiv = document.getElementById("en"), jaDiv = document.getElementById("ja"), 
               msgDiv = document.getElementById("msg"), bar = document.getElementById("prog-bar"),
-              box = document.getElementById("input-box"), game = document.getElementById("game");
+              box = document.getElementById("input-box"), game = document.getElementById("game"),
+              timerDiv = document.getElementById("timer-display"), retryBtn = document.getElementById("retry-btn");
 
         function speak(t) {{ window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(t); u.lang = 'en-US'; u.rate = 0.8; window.speechSynthesis.speak(u); }}
 
+        function restart() {{
+            idx = 0; typed = ""; startTime = null;
+            clearInterval(timerInterval);
+            timerDiv.innerText = "TIME: 0.0s";
+            retryBtn.style.display = "none";
+            enDiv.style.display = "block";
+            jaDiv.style.display = "block";
+            init();
+        }}
+
         function init() {{
             if (idx >= words.length) {{ 
-                enDiv.innerText = "Clear!"; jaDiv.innerText = "すごーい！"; msgDiv.innerText = "🎉✨"; bar.style.width="100%"; return; 
+                clearInterval(timerInterval);
+                const finalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+                enDiv.innerText = "Clear!";
+                jaDiv.innerText = "タイム: " + finalTime + "秒";
+                msgDiv.innerText = "🎉✨"; 
+                bar.style.width="100%";
+                retryBtn.style.display = "block";
+                return; 
             }}
             typed = "";
             jaDiv.innerText = words[idx].ja;
@@ -216,35 +229,36 @@ if st.session_state.typing_words:
             enDiv.innerHTML = h;
         }}
 
-        document.addEventListener("keydown", (e) => {{
-            if (e.key.length > 1 || idx >= words.length) return;
+        function handleInput(char) {{
+            if (idx >= words.length) return;
+            
+            // 最初の入力でタイマー開始
+            if (startTime === null) {{
+                startTime = Date.now();
+                timerInterval = setInterval(() => {{
+                    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                    timerDiv.innerText = "TIME: " + elapsed + "s";
+                }}, 100);
+            }}
+
             const target = words[idx].en.toLowerCase();
-            const inputChar = e.key.toLowerCase();
-            if (inputChar === target[typed.length]) {{
-                typed += inputChar;
-                game.classList.remove("shake");
+            if (char === target[typed.length]) {{
+                typed += char;
                 if (typed === target) {{
                     idx++; msgDiv.innerText = "Good Job!"; setTimeout(init, 600);
                 }} else render();
-            }} else {{
-                game.classList.remove("shake"); void game.offsetWidth; game.classList.add("shake");
             }}
+        }}
+
+        document.addEventListener("keydown", (e) => {{
+            if (e.key.length > 1) return;
+            handleInput(e.key.toLowerCase());
         }});
         
         box.addEventListener("input", (e) => {{
             const val = e.target.value.toLowerCase();
             if(val.length > 0) {{
-                const inputChar = val[val.length - 1];
-                const target = words[idx].en.toLowerCase();
-                if (inputChar === target[typed.length]) {{
-                    typed += inputChar;
-                    game.classList.remove("shake");
-                    if (typed === target) {{
-                        idx++; msgDiv.innerText = "Good Job!"; setTimeout(init, 600);
-                    }} else render();
-                }} else {{
-                    game.classList.remove("shake"); void game.offsetWidth; game.classList.add("shake");
-                }}
+                handleInput(val[val.length - 1]);
                 e.target.value = ""; 
             }}
         }});
