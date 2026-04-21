@@ -151,19 +151,37 @@ if st.session_state.typing_words:
         body {{ font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; background: #fff; overflow: hidden; }}
         #prog-bg {{ width: 90%; background: #eee; height: 12px; border-radius: 6px; margin: 10px 0; overflow: hidden; }}
         #prog-bar {{ height: 100%; width: 0%; background: #4CAF50; transition: 0.3s; }}
-        #game {{ width: 95%; max-width: 1000px; height: 350px; background: #fcfcfc; border: 4px solid #87CEFA; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }}
-        #en {{ font-size: 7rem; font-weight: bold; color: #333; margin: 0; letter-spacing: 4px; line-height: 1.2; }}
-        #ja {{ font-size: 2.5rem; color: #666; margin-top: 5px; font-weight: bold; }}
-        #msg {{ font-size: 2rem; color: #FF69B4; font-weight: bold; height: 40px; }}
+        #game {{ width: 95%; max-width: 1000px; height: 380px; background: #fcfcfc; border: 4px solid #87CEFA; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; overflow: hidden; }}
+        #en {{ font-size: 7rem; font-weight: bold; color: #333; margin: 0; letter-spacing: 4px; line-height: 1.2; transition: opacity 0.3s; }}
+        #ja {{ font-size: 2.5rem; color: #666; margin-top: 5px; font-weight: bold; transition: opacity 0.3s; }}
+        #msg {{ font-size: 2rem; color: #FF69B4; font-weight: bold; height: 40px; transition: opacity 0.3s; }}
         #timer-display {{ position: absolute; top: 15px; right: 25px; font-size: 1.5rem; color: #999; font-family: monospace; }}
         .typed {{ color: #ddd; }}
         .current {{ color: #FFA500; text-decoration: underline; }}
         #input-box {{ position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }}
-        #retry-btn {{ 
-            margin-top: 20px; padding: 15px 30px; font-size: 1.5rem; color: white; background: #4CAF50; 
-            border: none; border-radius: 10px; cursor: pointer; display: none; font-weight: bold;
+        
+        /* ランキング画面のデザイン */
+        #ranking-modal {{
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.95); display: none;
+            flex-direction: column; align-items: center; justify-content: center; z-index: 10;
         }}
-        #retry-btn:hover {{ background: #45a049; }}
+        #ranking-modal h2 {{ color: #ff9800; margin: 0 0 10px 0; font-size: 2.5rem; }}
+        .ranking-table {{ border-collapse: collapse; width: 80%; max-width: 500px; font-size: 1.2rem; margin-bottom: 15px; background: white; }}
+        .ranking-table th, .ranking-table td {{ border: 2px solid #87CEFA; padding: 8px; text-align: center; }}
+        .ranking-table th {{ background: #87CEFA; color: white; }}
+        .ranking-table tr:nth-child(even) {{ background-color: #f2f2f2; }}
+        .top1 {{ font-weight: bold; color: #d4af37; font-size: 1.4rem; }}
+        
+        #entry-area {{ margin-bottom: 15px; font-size: 1.2rem; }}
+        #player-name {{ font-size: 1.2rem; padding: 5px; width: 150px; text-align: center; border: 2px solid #ccc; border-radius: 5px; }}
+        .btn {{
+            padding: 10px 20px; font-size: 1.2rem; color: white; background: #4CAF50;
+            border: none; border-radius: 10px; cursor: pointer; font-weight: bold; margin: 5px;
+        }}
+        .btn:hover {{ background: #45a049; }}
+        .btn-blue {{ background: #2196F3; }}
+        .btn-blue:hover {{ background: #0b7dda; }}
     </style>
     </head>
     <body>
@@ -173,40 +191,61 @@ if st.session_state.typing_words:
             <div id="en"></div>
             <div id="ja"></div>
             <div id="msg"></div>
-            <button id="retry-btn" onclick="restart()">もういちど あそぶ</button>
             <input type="text" id="input-box" autocomplete="off" autocorrect="off" spellcheck="false">
+            
+            <div id="ranking-modal">
+                <h2>👑 【<span id="rank-word-count"></span>問】ランキング 👑</h2>
+                <div id="entry-area">
+                    タイム: <strong style="color:red; font-size:1.5rem;" id="final-time-disp"></strong> 秒<br><br>
+                    なまえ：<input type="text" id="player-name" placeholder="なまえ">
+                    <button class="btn btn-blue" onclick="saveScore()">ランキングにとうろく</button>
+                </div>
+                <table class="ranking-table" id="ranking-table">
+                    <thead><tr><th>順位</th><th>なまえ</th><th>タイム</th></tr></thead>
+                    <tbody id="ranking-body"></tbody>
+                </table>
+                <button class="btn" onclick="restart()">もういちど あそぶ</button>
+            </div>
         </div>
     <script>
         const words = {words_json};
+        const storageKey = "typing_ranking_" + words.length; // 問題数ごとにランキングを分ける
         let idx = 0, typed = "";
-        let startTime = null, timerInterval = null;
+        let startTime = null, timerInterval = null, finalTimeStr = "";
 
         const enDiv = document.getElementById("en"), jaDiv = document.getElementById("ja"), 
               msgDiv = document.getElementById("msg"), bar = document.getElementById("prog-bar"),
-              box = document.getElementById("input-box"), game = document.getElementById("game"),
-              timerDiv = document.getElementById("timer-display"), retryBtn = document.getElementById("retry-btn");
+              box = document.getElementById("input-box"), timerDiv = document.getElementById("timer-display"),
+              rankingModal = document.getElementById("ranking-modal"), rankingBody = document.getElementById("ranking-body"),
+              entryArea = document.getElementById("entry-area");
+
+        // 過去のランキング名前を自動入力
+        const lastName = localStorage.getItem("typing_last_name") || "";
+        document.getElementById("player-name").value = lastName;
+        document.getElementById("rank-word-count").innerText = words.length;
 
         function speak(t) {{ window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(t); u.lang = 'en-US'; u.rate = 0.8; window.speechSynthesis.speak(u); }}
 
         function restart() {{
+            rankingModal.style.display = "none";
             idx = 0; typed = ""; startTime = null;
             clearInterval(timerInterval);
             timerDiv.innerText = "TIME: 0.0s";
-            retryBtn.style.display = "none";
-            enDiv.style.display = "block";
-            jaDiv.style.display = "block";
+            enDiv.style.opacity = "1"; jaDiv.style.opacity = "1"; msgDiv.style.opacity = "1";
             init();
         }}
 
         function init() {{
             if (idx >= words.length) {{ 
                 clearInterval(timerInterval);
-                const finalTime = ((Date.now() - startTime) / 1000).toFixed(1);
-                enDiv.innerText = "Clear!";
-                jaDiv.innerText = "タイム: " + finalTime + "秒";
-                msgDiv.innerText = "🎉✨"; 
-                bar.style.width="100%";
-                retryBtn.style.display = "block";
+                finalTimeStr = ((Date.now() - startTime) / 1000).toFixed(1);
+                enDiv.style.opacity = "0"; jaDiv.style.opacity = "0"; msgDiv.style.opacity = "0";
+                
+                document.getElementById("final-time-disp").innerText = finalTimeStr;
+                entryArea.style.display = "block";
+                loadRankingTable();
+                rankingModal.style.display = "flex";
+                createConfetti();
                 return; 
             }}
             typed = "";
@@ -230,9 +269,8 @@ if st.session_state.typing_words:
         }}
 
         function handleInput(char) {{
-            if (idx >= words.length) return;
+            if (idx >= words.length || rankingModal.style.display === "flex") return;
             
-            // 最初の入力でタイマー開始
             if (startTime === null) {{
                 startTime = Date.now();
                 timerInterval = setInterval(() => {{
@@ -245,7 +283,7 @@ if st.session_state.typing_words:
             if (char === target[typed.length]) {{
                 typed += char;
                 if (typed === target) {{
-                    idx++; msgDiv.innerText = "Good Job!"; setTimeout(init, 600);
+                    idx++; msgDiv.innerText = "Good Job!"; setTimeout(init, 500);
                 }} else render();
             }}
         }}
@@ -263,13 +301,66 @@ if st.session_state.typing_words:
             }}
         }});
 
+        function loadRankingTable() {{
+            let rankings = JSON.parse(localStorage.getItem(storageKey) || "[]");
+            rankingBody.innerHTML = "";
+            if (rankings.length === 0) {{
+                rankingBody.innerHTML = "<tr><td colspan='3'>まだデータがありません</td></tr>";
+                return;
+            }}
+            
+            rankings.forEach((r, i) => {{
+                const tr = document.createElement("tr");
+                if (i === 0) tr.classList.add("top1");
+                tr.innerHTML = `<td>${{i + 1}}位</td><td>${{r.name}}</td><td>${{r.time.toFixed(1)}}秒</td>`;
+                rankingBody.appendChild(tr);
+            }});
+        }}
+
+        function saveScore() {{
+            const nameInput = document.getElementById("player-name").value.trim() || "ななし";
+            localStorage.setItem("typing_last_name", nameInput); // 次回のために名前を記憶
+            
+            let rankings = JSON.parse(localStorage.getItem(storageKey) || "[]");
+            rankings.push({{ name: nameInput, time: parseFloat(finalTimeStr) }});
+            
+            // タイムが早い順に並べ替え、上位5件を残す
+            rankings.sort((a, b) => a.time - b.time);
+            rankings = rankings.slice(0, 5);
+            
+            localStorage.setItem(storageKey, JSON.stringify(rankings));
+            
+            entryArea.style.display = "none"; // 登録エリアを隠す
+            loadRankingTable(); // 表を更新
+        }}
+
+        function createConfetti() {{
+            for (let i = 0; i < 50; i++) {{
+                const conf = document.createElement("div");
+                conf.style.position = "absolute";
+                conf.style.width = "10px"; conf.style.height = "10px";
+                conf.style.backgroundColor = ["#f44336", "#e91e63", "#9c27b0", "#3f51b5", "#2196f3", "#4caf50", "#ffeb3b", "#ff9800"][Math.floor(Math.random()*8)];
+                conf.style.left = Math.random() * 100 + "%"; conf.style.top = "-20px";
+                conf.style.zIndex = "20";
+                rankingModal.appendChild(conf);
+                
+                const fallDuration = Math.random() * 2 + 1.5;
+                conf.animate([
+                    {{ transform: `translate3d(0, 0, 0) rotate(0deg)` }},
+                    {{ transform: `translate3d(${{Math.random()*100 - 50}}px, 400px, 0) rotate(${{Math.random()*720}}deg)` }}
+                ], {{ duration: fallDuration * 1000, easing: 'ease-in', fill: 'forwards' }});
+            }}
+        }}
+
         init();
-        document.addEventListener("click", () => box.focus({{preventScroll: true}}));
+        document.addEventListener("click", (e) => {{
+            if(rankingModal.style.display !== "flex") box.focus({{preventScroll: true}});
+        }});
     </script>
     </body>
     </html>
     """
-    components.html(html_code, height=450)
+    components.html(html_code, height=500)
     
     if st.button("↩️ もんだいを作りなおす"):
         st.session_state.typing_words = []
