@@ -13,11 +13,14 @@ st.markdown("""
         border-radius: 10px;
         padding: 15px;
     }
-    /* Streamlit自体の余白を削って画面に収めやすくする */
     .block-container {
         padding-top: 2rem !important;
         padding-bottom: 2rem !important;
         max-width: 1000px !important;
+    }
+    /* 追加するボタンの余白調整 */
+    div.stButton > button {
+        margin-top: 5px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -40,6 +43,9 @@ st.title("⌨️ えいごタイピングであそぼう！")
 # === 💾 状態管理 ===
 if "typing_words" not in st.session_state:
     st.session_state.typing_words = []
+# カスタム入力枠の数を管理
+if "custom_word_count" not in st.session_state:
+    st.session_state.custom_word_count = 5
 
 # ==========================================
 # 1. 問題作成エリア
@@ -53,7 +59,7 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=True):
         if theme == "じゆうに入力":
             custom_theme = st.text_input("すきなテーマをいれてね（例：のりもの、スポーツ）")
             
-        word_count = st.slider("もんだいの数", 3, 10, 5)
+        word_count = st.slider("もんだいの数", 3, 10, 5, key="ai_word_count")
         
         if st.button("🚀 AIでもんだいをつくる！", type="primary"):
             target_theme = custom_theme if theme == "じゆうに入力" else theme
@@ -81,19 +87,81 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=True):
                     st.error(f"エラーが発生しました: {e}")
                     
     with tab2:
-        st.write("「英単語,日本語」の形式で1行ずつ入力してね。（例: apple,りんご）")
-        manual_input = st.text_area("もんだいを入力:", height=150)
-        if st.button("📝 このもんだいであそぶ"):
-            words = []
-            for line in manual_input.split('\n'):
-                if ',' in line:
-                    en, ja = line.split(',', 1)
-                    words.append({"en": en.strip().lower(), "ja": ja.strip()})
-            if words:
-                st.session_state.typing_words = words
-                st.success("もんだいが セットされたよ！下の画面であそんでね。")
-            else:
-                st.warning("正しく入力してね。")
+        st.write("📝 **英単語を入力してね。日本語がわからない時は、後でAIに任せることもできるよ！**")
+        
+        # 入力枠を生成するためのリストを作成
+        custom_inputs = []
+        
+        for i in range(st.session_state.custom_word_count):
+            col_en, col_ja = st.columns(2)
+            with col_en:
+                en_val = st.text_input(f"単語 {i+1} (英語)", key=f"en_{i}", placeholder="例: apple")
+            with col_ja:
+                ja_val = st.text_input(f"意味 {i+1} (日本語)", key=f"ja_{i}", placeholder="例: りんご")
+            custom_inputs.append({"en": en_val, "ja": ja_val})
+            
+        # 枠を追加するボタン
+        if st.button("➕ 単語の枠を増やす"):
+            st.session_state.custom_word_count += 1
+            st.rerun()
+
+        st.markdown("---")
+        
+        col_ai, col_start = st.columns(2)
+        with col_ai:
+            if st.button("🤖 空白の日本語をAIに翻訳してもらう", use_container_width=True):
+                # 英語が入力されていて、日本語が空のものを抽出
+                words_to_translate = [item["en"] for item in custom_inputs if item["en"].strip() and not item["ja"].strip()]
+                
+                if not words_to_translate:
+                    st.info("翻訳が必要な単語はありませんでした。")
+                else:
+                    with st.spinner("AIが日本語を調べています..."):
+                        try:
+                            prompt = f"""
+                            以下の英単語リストの日本語の意味を教えてください。
+                            子供向けのアプリで使うため、簡単で一般的な意味を「ひらがな」または「一般的な漢字+ふりがななし」で出力してください。
+                            出力形式は必ず以下のJSON配列にしてください。余計なテキストは含めないでください。
+                            例: [{{"en": "apple", "ja": "りんご"}}, {{"en": "dog", "ja": "いぬ"}}]
+                            
+                            単語リスト: {', '.join(words_to_translate)}
+                            """
+                            model = genai.GenerativeModel("gemini-2.5-flash-lite")
+                            res = model.generate_content(prompt)
+                            
+                            json_str = re.search(r'\[.*\]', res.text, re.DOTALL)
+                            if json_str:
+                                translated_data = json.loads(json_str.group(0))
+                                # 翻訳結果をセッションステート（入力枠）に反映
+                                trans_dict = {item["en"].lower(): item["ja"] for item in translated_data}
+                                
+                                for i in range(st.session_state.custom_word_count):
+                                    current_en = st.session_state[f"en_{i}"].strip().lower()
+                                    if current_en in trans_dict and not st.session_state[f"ja_{i}"].strip():
+                                        # st.session_stateの値を直接更新してUIに反映させる
+                                        st.session_state[f"ja_{i}"] = trans_dict[current_en]
+                                st.success("日本語を補完しました！")
+                                st.rerun() # 画面を再描画して値を反映
+                            else:
+                                st.error("翻訳に失敗しました。")
+                        except Exception as e:
+                            st.error(f"エラーが発生しました: {e}")
+
+        with col_start:
+            if st.button("🚀 このもんだいであそぶ！", type="primary", use_container_width=True):
+                words = []
+                for i in range(st.session_state.custom_word_count):
+                    en = st.session_state[f"en_{i}"].strip()
+                    ja = st.session_state[f"ja_{i}"].strip()
+                    # 英語が入力されている行のみをリストに追加（強制的に小文字化）
+                    if en:
+                        words.append({"en": en.lower(), "ja": ja if ja else "(意味なし)"})
+                
+                if words:
+                    st.session_state.typing_words = words
+                    st.success("もんだいが セットされたよ！下の画面であそんでね。")
+                else:
+                    st.warning("英単語を少なくとも1つ入力してね。")
 
 # ==========================================
 # 2. タイピングゲームエリア（軽量HTML/JS）
@@ -103,7 +171,6 @@ if st.session_state.typing_words:
     
     words_json = json.dumps(st.session_state.typing_words)
     
-    # 💡 スクロールバグを修正し、PCの横画面に最適化したHTML
     html_code = f"""
     <!DOCTYPE html>
     <html lang="ja">
@@ -121,7 +188,7 @@ if st.session_state.typing_words:
             padding: 10px;
             box-sizing: border-box;
             user-select: none;
-            overflow: hidden; /* 画面全体のスクロールを禁止 */
+            overflow: hidden;
         }}
         #progress-container {{
             width: 100%;
@@ -145,15 +212,15 @@ if st.session_state.typing_words:
             justify-content: center;
             width: 100%;
             max-width: 800px;
-            height: 380px; /* PC画面に収まる高さに固定 */
+            height: 380px;
             background: #f9f9f9;
             border-radius: 15px;
             border: 3px solid #ddd;
             cursor: pointer;
-            position: relative; /* 隠し要素をこの枠内に留める */
+            position: relative;
         }}
         #word-en {{
-            font-size: 5rem; /* PCで見やすい特大サイズ */
+            font-size: 5rem;
             font-weight: bold;
             color: #333;
             letter-spacing: 3px;
@@ -192,7 +259,6 @@ if st.session_state.typing_words:
             background-color: #ffebee !important;
             border-color: #f44336 !important;
         }}
-        /* スクロールバグを修正した隠し入力欄 */
         #hidden-input {{
             position: absolute;
             opacity: 0;
@@ -201,7 +267,6 @@ if st.session_state.typing_words:
             border: none;
             outline: none;
             pointer-events: none;
-            /* top: -1000px を削除し、画面内（game-area内）に配置することでスクロールジャンプを防止 */
         }}
     </style>
     </head>
@@ -281,7 +346,6 @@ if st.session_state.typing_words:
         }}
 
         function focusInput() {{
-            // preventScroll: true を追加して、フォーカス時の不要なスクロールをブラウザ側でもブロック
             hiddenInput.focus({{ preventScroll: true }});
         }}
 
@@ -366,5 +430,4 @@ if st.session_state.typing_words:
     </html>
     """
     
-    # 高さを抑えてPC画面に収める
     components.html(html_code, height=450, scrolling=False)
