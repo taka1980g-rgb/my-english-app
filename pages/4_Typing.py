@@ -5,7 +5,7 @@ import json
 import re
 
 # === 🎨 デザイン設定（PC横画面最適化） ===
-st.set_page_config(layout="wide") # 横幅を広く使う
+st.set_page_config(layout="wide")
 
 st.markdown("""
     <style>
@@ -20,7 +20,6 @@ st.markdown("""
         border-radius: 12px;
         padding: 10px;
     }
-    /* 入力欄のラベルを横並びに近くする調整 */
     .stTextInput { margin-bottom: -10px; }
     </style>
     """, unsafe_allow_html=True)
@@ -40,11 +39,10 @@ except Exception:
 
 st.title("⌨️ えいごタイピングであそぼう！")
 
-# === 💾 状態管理（データの保管場所） ===
+# === 💾 状態管理 ===
 if "typing_words" not in st.session_state:
     st.session_state.typing_words = []
 
-# 「自分で入力」用のデータを保持するリスト（エラー回避の肝）
 if "input_rows" not in st.session_state:
     st.session_state.input_rows = [{"en": "", "ja": ""} for _ in range(5)]
 
@@ -78,10 +76,8 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=not bool
     with tab2:
         st.write("💡 英単語を入れると、AIが日本語を埋めてくれるよ！")
         
-        # 入力枠の動的生成
         for i, row in enumerate(st.session_state.input_rows):
             c1, c2 = st.columns(2)
-            # valueにsession_stateの値を指定し、keyは管理用にする
             st.session_state.input_rows[i]["en"] = c1.text_input(f"英語 {i+1}", value=row["en"], key=f"en_input_{i}").lower()
             st.session_state.input_rows[i]["ja"] = c2.text_input(f"日本語 {i+1}", value=row["ja"], key=f"ja_input_{i}")
 
@@ -92,24 +88,42 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=not bool
             st.rerun()
 
         if col_ai.button("🤖 日本語をAIにおまかせ"):
-            # 英語があって日本語が空のものを翻訳
             targets = [r["en"] for r in st.session_state.input_rows if r["en"] and not r["ja"]]
             if targets:
                 with st.spinner("翻訳中..."):
                     try:
-                        prompt = f"以下の英単語の簡単な日本語訳（ひらがな多め）をJSONで返して。 [{', '.join(targets)}] 例: [{{'en':'dog','ja':'いぬ'}}]"
-                        model = genai.GenerativeModel("gemini-2.5-flash-lite")
+                        # 指示を強化し、モデルもflashに変更
+                        prompt = f"""
+                        以下の英単語リストの簡単な日本語訳（ひらがな多め）をJSON配列のみで返してください。マークダウンの記号や余計な説明は絶対に含めないでください。
+                        ターゲット: [{', '.join(targets)}] 
+                        出力例: [{{"en":"dog","ja":"いぬ"}}, {{"en":"apple","ja":"りんご"}}]
+                        """
+                        model = genai.GenerativeModel("gemini-2.5-flash")
                         res = model.generate_content(prompt)
+                        
+                        # まずはJSON配列っぽい部分を探す
                         json_match = re.search(r'\[.*\]', res.text, re.DOTALL)
+                        
                         if json_match:
-                            translated = json.loads(json_match.group(0))
-                            # 翻訳結果を反映
-                            for t in translated:
-                                for r in st.session_state.input_rows:
-                                    if r["en"] == t["en"]:
-                                        r["ja"] = t["ja"]
-                            st.rerun() # ここで再描画してtext_inputに反映
-                    except: st.error("AI翻訳に失敗しました。")
+                            try:
+                                translated = json.loads(json_match.group(0))
+                                for t in translated:
+                                    for r in st.session_state.input_rows:
+                                        if r["en"] == t["en"]:
+                                            r["ja"] = t["ja"]
+                                st.rerun()
+                            except json.JSONDecodeError as je:
+                                # JSONの形式がおかしい場合のエラー
+                                st.error(f"⚠️ データの読み込みに失敗しました (JSONDecodeError): {je}")
+                                st.info(f"【デバッグ】AIの生データ:\n{res.text}")
+                        else:
+                            # そもそも配列の形（[...]）で返ってこなかった場合のエラー
+                            st.error("⚠️ AIが正しい形式（JSON配列）で返答しませんでした。")
+                            st.info(f"【デバッグ】AIの生データ:\n{res.text}")
+                            
+                    except Exception as e:
+                        # 通信エラーやAPIキーエラーなど、根本的なシステムエラー
+                        st.error(f"⚠️ AI通信エラーが発生しました: {e}")
             else:
                 st.warning("英語を入力してね！")
 
