@@ -13,6 +13,12 @@ st.markdown("""
         border-radius: 10px;
         padding: 15px;
     }
+    /* Streamlit自体の余白を削って画面に収めやすくする */
+    .block-container {
+        padding-top: 2rem !important;
+        padding-bottom: 2rem !important;
+        max-width: 1000px !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -53,7 +59,6 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=True):
             target_theme = custom_theme if theme == "じゆうに入力" else theme
             with st.spinner("AIがもんだいをつくっているよ..."):
                 try:
-                    # 💡 APIで単語リストを自動生成
                     prompt = f"""
                     子供向けの英語タイピングアプリ用に、以下のテーマに関連する英単語を{word_count}個作成してください。
                     テーマ: {target_theme}
@@ -66,7 +71,6 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=True):
                     model = genai.GenerativeModel("gemini-2.5-flash")
                     res = model.generate_content(prompt)
                     
-                    # AIの返答からJSONだけを抜き出す
                     json_str = re.search(r'\[.*\]', res.text, re.DOTALL)
                     if json_str:
                         st.session_state.typing_words = json.loads(json_str.group(0))
@@ -84,7 +88,6 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=True):
             for line in manual_input.split('\n'):
                 if ',' in line:
                     en, ja = line.split(',', 1)
-                    # 強制的に小文字に変換
                     words.append({"en": en.strip().lower(), "ja": ja.strip()})
             if words:
                 st.session_state.typing_words = words
@@ -98,10 +101,9 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=True):
 if st.session_state.typing_words:
     st.markdown("---")
     
-    # PythonのリストをJavaScriptで読み込めるJSONテキストに変換
     words_json = json.dumps(st.session_state.typing_words)
     
-    # 💡 Streamlit特有の通信ラグを消すため、ゲーム部分をまるごとHTMLで埋め込む
+    # 💡 スクロールバグを修正し、PCの横画面に最適化したHTML
     html_code = f"""
     <!DOCTYPE html>
     <html lang="ja">
@@ -114,18 +116,20 @@ if st.session_state.typing_words:
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding: 20px;
+            justify-content: center;
             margin: 0;
+            padding: 10px;
             box-sizing: border-box;
             user-select: none;
+            overflow: hidden; /* 画面全体のスクロールを禁止 */
         }}
         #progress-container {{
             width: 100%;
-            max-width: 600px;
+            max-width: 800px;
             background-color: #e0e0e0;
             border-radius: 10px;
-            margin-bottom: 20px;
-            height: 20px;
+            margin-bottom: 15px;
+            height: 15px;
             overflow: hidden;
         }}
         #progress-bar {{
@@ -138,37 +142,38 @@ if st.session_state.typing_words:
             display: flex;
             flex-direction: column;
             align-items: center;
+            justify-content: center;
             width: 100%;
-            max-width: 600px;
+            max-width: 800px;
+            height: 380px; /* PC画面に収まる高さに固定 */
             background: #f9f9f9;
-            padding: 40px 20px;
-            border-radius: 20px;
+            border-radius: 15px;
             border: 3px solid #ddd;
             cursor: pointer;
+            position: relative; /* 隠し要素をこの枠内に留める */
         }}
-        /* 第3版のレイアウト：超特大英単語と真下の日本語訳 */
         #word-en {{
-            font-size: 5.5rem;
+            font-size: 5rem; /* PCで見やすい特大サイズ */
             font-weight: bold;
             color: #333;
-            letter-spacing: 5px;
+            letter-spacing: 3px;
             margin: 0;
-            line-height: 1;
+            line-height: 1.2;
         }}
         .typed {{ color: #ccc; }}
         .current {{ color: #ff9800; text-decoration: underline; }}
         
         #word-ja {{
-            font-size: 2.5rem;
+            font-size: 2rem;
             color: #555;
-            margin-top: 10px;
-            margin-bottom: 30px;
+            margin-top: 5px;
+            margin-bottom: 15px;
             font-weight: bold;
         }}
         #message {{
-            font-size: 2rem;
+            font-size: 1.8rem;
             color: #e91e63;
-            height: 40px;
+            height: 35px;
             font-weight: bold;
             animation: pop 0.3s ease-out;
         }}
@@ -187,11 +192,16 @@ if st.session_state.typing_words:
             background-color: #ffebee !important;
             border-color: #f44336 !important;
         }}
-        /* スマホやタブレット用の隠し入力欄 */
+        /* スクロールバグを修正した隠し入力欄 */
         #hidden-input {{
-            opacity: 0;
             position: absolute;
-            top: -1000px;
+            opacity: 0;
+            width: 1px;
+            height: 1px;
+            border: none;
+            outline: none;
+            pointer-events: none;
+            /* top: -1000px を削除し、画面内（game-area内）に配置することでスクロールジャンプを防止 */
         }}
     </style>
     </head>
@@ -244,7 +254,6 @@ if st.session_state.typing_words:
                 return;
             }}
             
-            // 強制小文字化して出題
             currentWord = words[currentIndex].en.toLowerCase();
             typedChars = "";
             jaEl.innerHTML = words[currentIndex].ja;
@@ -252,7 +261,6 @@ if st.session_state.typing_words:
             updateDisplay();
             updateProgress();
             
-            // 表示と同時に読み上げ
             setTimeout(() => speak(currentWord), 100);
             hiddenInput.value = "";
             focusInput();
@@ -273,12 +281,12 @@ if st.session_state.typing_words:
         }}
 
         function focusInput() {{
-            hiddenInput.focus();
+            // preventScroll: true を追加して、フォーカス時の不要なスクロールをブラウザ側でもブロック
+            hiddenInput.focus({{ preventScroll: true }});
         }}
 
         const praises = ["Great!", "Good Job!", "Perfect!", "Nice!", "Excellent!"];
 
-        // PCキーボード用
         document.addEventListener("keydown", (e) => {{
             if (e.key.length > 1 || currentIndex >= words.length) return;
 
@@ -297,12 +305,11 @@ if st.session_state.typing_words:
                 }}
             }} else {{
                 gameArea.classList.remove("shake");
-                void gameArea.offsetWidth; // アニメーションリセット
+                void gameArea.offsetWidth;
                 gameArea.classList.add("shake");
             }}
         }});
         
-        // スマホ・タブレットのソフトウェアキーボード用
         hiddenInput.addEventListener("input", (e) => {{
             const val = hiddenInput.value.toLowerCase();
             if(val.length > 0) {{
@@ -328,7 +335,6 @@ if st.session_state.typing_words:
             }}
         }});
 
-        // 紙吹雪エフェクト
         function createConfetti() {{
             for (let i = 0; i < 80; i++) {{
                 const conf = document.createElement("div");
@@ -353,7 +359,6 @@ if st.session_state.typing_words:
             }}
         }}
 
-        // 初期化
         showWord();
         focusInput();
     </script>
@@ -361,5 +366,5 @@ if st.session_state.typing_words:
     </html>
     """
     
-    # 枠線のないiframeとしてStreamlitに描画
-    components.html(html_code, height=500, scrolling=False)
+    # 高さを抑えてPC画面に収める
+    components.html(html_code, height=450, scrolling=False)
