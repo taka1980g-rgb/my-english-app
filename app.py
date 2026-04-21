@@ -5,12 +5,8 @@ import datetime
 # アプリ全体の設定（タブのタイトルやアイコン）
 st.set_page_config(page_title="家族専用 AI学習アプリ", page_icon="🏠", layout="centered")
 
-# クッキーマネージャーの初期化（ブラウザにデータを保存・読み込みするためのツール）
-@st.cache_resource
-def get_manager():
-    return stx.CookieManager()
-
-cookie_manager = get_manager()
+# 💡 修正ポイント: おまじない（@st.cache_resource）を消して、直接初期化するだけ！
+cookie_manager = stx.CookieManager()
 
 APP_PASSWORD = st.secrets.get("APP_PASSWORD", "1234")
 
@@ -58,7 +54,7 @@ st.markdown("""
 ### 📱 アプリ一覧
 * **🗣️ 1_Roleplay**: 自由に会話して実践力を鍛える英会話モード
 * **🎧 2_Shadowing**: リスニングと発音を徹底的に鍛える鬼コーチモード
-* **🧸 3_Kids**: お子様向けのフルひらがな＆激甘ごほうびモード
+* **🧸 3_Kids**: 【NEW!】お子様向けのフルひらがな＆激甘ごほうびモード
 * **⌨️ 4_Typing**: えいごタイピングであそぼう！
 
 👈 左上の「 ＞ 」ボタンを押してメニューを開いてください。
