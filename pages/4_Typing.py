@@ -45,6 +45,11 @@ if "typing_words" not in st.session_state:
     st.session_state.typing_words = []
 if "custom_word_count" not in st.session_state:
     st.session_state.custom_word_count = 5
+
+# 💡 編集枠のデータを安全に管理するためのリスト
+if "edit_words" not in st.session_state:
+    st.session_state.edit_words = [{"en": "", "ja": ""} for _ in range(5)]
+
 # 問題ごとの固有ID（ランキングの紐付けに使用）
 if "current_problem_id" not in st.session_state:
     st.session_state.current_problem_id = str(uuid.uuid4())
@@ -83,15 +88,14 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=not bool
                         st.session_state.current_problem_id = str(uuid.uuid4()) # 新しいIDを発行
                         st.session_state.loaded_ranking = []
                         
-                        # AIが作った問題を「自分で入力」枠にもセット（後から編集できるようにする）
+                        # 💡 AIが作った問題を「編集用リスト」にセットする（エラー回避のため）
                         st.session_state.custom_word_count = max(5, len(generated_words))
+                        st.session_state.edit_words = []
                         for i in range(st.session_state.custom_word_count):
                             if i < len(generated_words):
-                                st.session_state[f"en_input_{i}"] = generated_words[i]["en"]
-                                st.session_state[f"ja_input_{i}"] = generated_words[i].get("ja", "")
+                                st.session_state.edit_words.append({"en": generated_words[i]["en"], "ja": generated_words[i].get("ja", "")})
                             else:
-                                st.session_state[f"en_input_{i}"] = ""
-                                st.session_state[f"ja_input_{i}"] = ""
+                                st.session_state.edit_words.append({"en": "", "ja": ""})
                         
                         st.rerun()
                 except Exception as e:
@@ -107,8 +111,8 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=not bool
             st.session_state.trigger_translation = False
             targets = []
             for i in range(st.session_state.custom_word_count):
-                en = st.session_state.get(f"en_input_{i}", "").strip()
-                ja = st.session_state.get(f"ja_input_{i}", "").strip()
+                en = st.session_state.edit_words[i]["en"].strip()
+                ja = st.session_state.edit_words[i]["ja"].strip()
                 if en and not ja:
                     targets.append((i, en))
             
@@ -125,7 +129,7 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=not bool
                             trans_dict = {item["en"].lower(): item["ja"] for item in translated}
                             for idx, en in targets:
                                 if en.lower() in trans_dict:
-                                    st.session_state[f"ja_input_{idx}"] = trans_dict[en.lower()]
+                                    st.session_state.edit_words[idx]["ja"] = trans_dict[en.lower()]
                             st.success("日本語を補完しました！")
                         else:
                             st.error("⚠️ AIが正しい形式で返答しませんでした。")
@@ -134,16 +138,24 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=not bool
             else:
                 st.warning("英語を入力してください！")
 
+        # 💡 編集用リスト（edit_words）の値を画面に表示し、入力があればリストを更新する
         for i in range(st.session_state.custom_word_count):
+            if i >= len(st.session_state.edit_words):
+                st.session_state.edit_words.append({"en": "", "ja": ""})
+                
             c1, c2 = st.columns(2)
-            c1.text_input(f"英語 {i+1}", key=f"en_input_{i}", placeholder="例: apple")
-            c2.text_input(f"日本語 {i+1}", key=f"ja_input_{i}", placeholder="例: りんご")
+            en_val = c1.text_input(f"英語 {i+1}", value=st.session_state.edit_words[i]["en"], key=f"en_widget_{i}", placeholder="例: apple")
+            ja_val = c2.text_input(f"日本語 {i+1}", value=st.session_state.edit_words[i]["ja"], key=f"ja_widget_{i}", placeholder="例: りんご")
+            
+            st.session_state.edit_words[i]["en"] = en_val
+            st.session_state.edit_words[i]["ja"] = ja_val
 
         st.markdown("---")
         col_add, col_ai, col_play = st.columns([1, 2, 2])
         
         if col_add.button("➕ 枠を増やす"):
             st.session_state.custom_word_count += 1
+            st.session_state.edit_words.append({"en": "", "ja": ""})
             st.rerun()
 
         if col_ai.button("🤖 日本語をAIにおまかせ"):
@@ -153,8 +165,8 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=not bool
         if col_play.button("🚀 このもんだいであそぶ！", type="primary", use_container_width=True):
             valid_words = []
             for i in range(st.session_state.custom_word_count):
-                en = st.session_state.get(f"en_input_{i}", "").strip().lower()
-                ja = st.session_state.get(f"ja_input_{i}", "").strip()
+                en = st.session_state.edit_words[i]["en"].strip().lower()
+                ja = st.session_state.edit_words[i]["ja"].strip()
                 if en:
                     valid_words.append({"en": en, "ja": ja if ja else "(意味なし)"})
             
@@ -174,7 +186,6 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=not bool
             try:
                 save_data = json.load(uploaded_file)
                 
-                # 古い形式（単語リストのみ）か、新しい形式（問題ID＋ランキング同梱）かを判定
                 if isinstance(save_data, list):
                     words = save_data
                     ranking = []
@@ -189,19 +200,19 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=not bool
                     st.session_state.loaded_ranking = ranking
                     st.session_state.typing_words = words
                     
-                    # 読み込んだデータを「自分で入力」枠にもセットして編集可能にする
+                    # 💡 読み込んだデータを「編集用リスト」にセットする
                     st.session_state.custom_word_count = max(5, len(words))
+                    st.session_state.edit_words = []
                     for i in range(st.session_state.custom_word_count):
                         if i < len(words):
-                            st.session_state[f"en_input_{i}"] = words[i]["en"]
-                            st.session_state[f"ja_input_{i}"] = words[i].get("ja", "")
+                            st.session_state.edit_words.append({"en": words[i]["en"], "ja": words[i].get("ja", "")})
                         else:
-                            st.session_state[f"en_input_{i}"] = ""
-                            st.session_state[f"ja_input_{i}"] = ""
+                            st.session_state.edit_words.append({"en": "", "ja": ""})
                             
                     st.rerun()
-            except Exception:
-                st.error("ファイルの読み込みに失敗しました。正しいファイルか確認してね。")
+            except Exception as e:
+                # 何のエラーが出ているか詳細を表示するように変更
+                st.error(f"ファイルの読み込みに失敗しました。詳細: {e}")
 
 # ==========================================
 # 2. タイピングゲームエリア
@@ -210,7 +221,6 @@ if st.session_state.typing_words:
     st.markdown("---")
     words_json = json.dumps(st.session_state.typing_words)
     
-    # 💡 Python側から、その問題専用のIDと、読み込まれたランキング情報をJSに渡す
     problem_id = st.session_state.current_problem_id
     loaded_ranking_json = json.dumps(st.session_state.loaded_ranking)
     
@@ -290,10 +300,9 @@ if st.session_state.typing_words:
     <script>
         const words = {words_json};
         const problemId = "{problem_id}";
-        const storageKey = "typing_ranking_" + problemId; // 問題ごとに固有の保存先を使用
+        const storageKey = "typing_ranking_" + problemId; 
         const loadedRanking = {loaded_ranking_json};
         
-        // ファイルから読み込んだランキングデータがあり、かつブラウザにまだデータが無い場合は適用する
         if (!localStorage.getItem(storageKey) && loadedRanking.length > 0) {{
             localStorage.setItem(storageKey, JSON.stringify(loadedRanking));
         }}
@@ -416,7 +425,7 @@ if st.session_state.typing_words:
             let rankings = JSON.parse(localStorage.getItem(storageKey) || "[]");
             rankings.push({{ name: nameInput, time: parseFloat(finalTimeStr) }});
             rankings.sort((a, b) => a.time - b.time);
-            rankings = rankings.slice(0, 5); // 上位5件を保存
+            rankings = rankings.slice(0, 5); 
             
             localStorage.setItem(storageKey, JSON.stringify(rankings));
             entryArea.style.display = "none";
@@ -430,7 +439,6 @@ if st.session_state.typing_words:
             }}
         }}
         
-        // 💡 新しい保存機能（問題データとランキングを一つにしてダウンロード）
         function downloadSaveFile() {{
             const currentRanking = JSON.parse(localStorage.getItem(storageKey) || "[]");
             const saveData = {{
