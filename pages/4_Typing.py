@@ -3,6 +3,7 @@ import streamlit.components.v1 as components
 import google.generativeai as genai
 import json
 import re
+import uuid
 
 # === 🎨 デザイン設定（PC横画面最適化） ===
 st.set_page_config(layout="wide")
@@ -44,13 +45,18 @@ if "typing_words" not in st.session_state:
     st.session_state.typing_words = []
 if "custom_word_count" not in st.session_state:
     st.session_state.custom_word_count = 5
+# 問題ごとの固有ID（ランキングの紐付けに使用）
+if "current_problem_id" not in st.session_state:
+    st.session_state.current_problem_id = str(uuid.uuid4())
+# 読み込んだランキングデータ
+if "loaded_ranking" not in st.session_state:
+    st.session_state.loaded_ranking = []
 
 # ==========================================
 # 1. 問題作成エリア
 # ==========================================
 with st.expander("📝 もんだいを つくる / えらぶ", expanded=not bool(st.session_state.typing_words)):
-    # 💡 タブを3つに増やしました
-    tab1, tab2, tab3 = st.tabs(["✨ AIにおまかせ", "✍️ 自分で入力", "💾 ほぞん・よみこみ"])
+    tab1, tab2, tab3 = st.tabs(["✨ AIにおまかせ", "✍️ 自分で入力", "📂 よみこむ"])
     
     # ------------------------------------
     # タブ1: AIにおまかせ
@@ -71,7 +77,22 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=not bool
                     res = model.generate_content(prompt)
                     json_match = re.search(r'\[.*\]', res.text, re.DOTALL)
                     if json_match:
-                        st.session_state.typing_words = json.loads(json_match.group(0))
+                        generated_words = json.loads(json_match.group(0))
+                        
+                        st.session_state.typing_words = generated_words
+                        st.session_state.current_problem_id = str(uuid.uuid4()) # 新しいIDを発行
+                        st.session_state.loaded_ranking = []
+                        
+                        # AIが作った問題を「自分で入力」枠にもセット（後から編集できるようにする）
+                        st.session_state.custom_word_count = max(5, len(generated_words))
+                        for i in range(st.session_state.custom_word_count):
+                            if i < len(generated_words):
+                                st.session_state[f"en_input_{i}"] = generated_words[i]["en"]
+                                st.session_state[f"ja_input_{i}"] = generated_words[i].get("ja", "")
+                            else:
+                                st.session_state[f"en_input_{i}"] = ""
+                                st.session_state[f"ja_input_{i}"] = ""
+                        
                         st.rerun()
                 except Exception as e:
                     st.error(f"エラー: {e}")
@@ -144,45 +165,43 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=not bool
                 st.error("単語をいれてね！")
 
     # ------------------------------------
-    # 💡 タブ3: ほぞん・よみこみ機能
+    # タブ3: 読み込み
     # ------------------------------------
     with tab3:
-        col_load, col_save = st.columns(2)
-        
-        with col_load:
-            st.markdown("#### 📂 もんだいを よみこむ")
-            uploaded_file = st.file_uploader("保存したファイル(.json)をえらんでね", type=["json"])
-            if uploaded_file is not None:
-                try:
-                    loaded_words = json.load(uploaded_file)
-                    st.success(f"{len(loaded_words)}個の単語を読み込みました！")
-                    if st.button("🚀 このもんだいであそぶ！", type="primary", key="load_play_btn"):
-                        st.session_state.typing_words = loaded_words
-                        st.rerun()
-                except Exception:
-                    st.error("ファイルの読み込みに失敗しました。正しいファイルか確認してね。")
-        
-        with col_save:
-            st.markdown("#### 💾 今のもんだいを ほぞん")
-            if st.session_state.typing_words:
-                st.write("いま遊んでいるもんだいを、パソコンに保存できます。")
+        st.markdown("#### 📂 ほぞんしたファイルから よみこむ")
+        uploaded_file = st.file_uploader("保存したファイル(.json)をえらんでね", type=["json"])
+        if uploaded_file is not None:
+            try:
+                save_data = json.load(uploaded_file)
                 
-                # 日本語が文字化けしないように ensure_ascii=False でJSON化
-                json_data = json.dumps(st.session_state.typing_words, ensure_ascii=False, indent=2)
-                
-                # ファイル名を自由に付けられるようにする
-                save_name = st.text_input("ファイルの名前", value="my_typing_words")
-                
-                st.download_button(
-                    label="💾 ファイルをダウンロード",
-                    data=json_data,
-                    file_name=f"{save_name}.json",
-                    mime="application/json",
-                    type="primary"
-                )
-            else:
-                st.info("💡 もんだいを作成して遊び始めると、ここに「保存ボタン」が表示されます。")
+                # 古い形式（単語リストのみ）か、新しい形式（問題ID＋ランキング同梱）かを判定
+                if isinstance(save_data, list):
+                    words = save_data
+                    ranking = []
+                    p_id = str(uuid.uuid4())
+                else:
+                    words = save_data.get("words", [])
+                    ranking = save_data.get("ranking", [])
+                    p_id = save_data.get("problem_id", str(uuid.uuid4()))
 
+                if st.button("📝 よみこんで あそぶ！", type="primary"):
+                    st.session_state.current_problem_id = p_id
+                    st.session_state.loaded_ranking = ranking
+                    st.session_state.typing_words = words
+                    
+                    # 読み込んだデータを「自分で入力」枠にもセットして編集可能にする
+                    st.session_state.custom_word_count = max(5, len(words))
+                    for i in range(st.session_state.custom_word_count):
+                        if i < len(words):
+                            st.session_state[f"en_input_{i}"] = words[i]["en"]
+                            st.session_state[f"ja_input_{i}"] = words[i].get("ja", "")
+                        else:
+                            st.session_state[f"en_input_{i}"] = ""
+                            st.session_state[f"ja_input_{i}"] = ""
+                            
+                    st.rerun()
+            except Exception:
+                st.error("ファイルの読み込みに失敗しました。正しいファイルか確認してね。")
 
 # ==========================================
 # 2. タイピングゲームエリア
@@ -190,6 +209,10 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=not bool
 if st.session_state.typing_words:
     st.markdown("---")
     words_json = json.dumps(st.session_state.typing_words)
+    
+    # 💡 Python側から、その問題専用のIDと、読み込まれたランキング情報をJSに渡す
+    problem_id = st.session_state.current_problem_id
+    loaded_ranking_json = json.dumps(st.session_state.loaded_ranking)
     
     html_code = f"""
     <!DOCTYPE html>
@@ -208,7 +231,6 @@ if st.session_state.typing_words:
         .current {{ color: #FFA500; text-decoration: underline; }}
         #input-box {{ position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }}
         
-        /* ランキング画面のデザイン */
         #ranking-modal {{
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(255, 255, 255, 0.98); display: none;
@@ -224,15 +246,18 @@ if st.session_state.typing_words:
         #entry-area {{ margin-bottom: 15px; font-size: 1.2rem; text-align: center; }}
         #player-name {{ font-size: 1.2rem; padding: 8px; width: 180px; text-align: center; border: 2px solid #87CEFA; border-radius: 5px; outline: none; }}
         .btn {{
-            padding: 10px 20px; font-size: 1.1rem; color: white; background: #4CAF50;
-            border: none; border-radius: 10px; cursor: pointer; font-weight: bold; margin: 5px;
+            padding: 8px 15px; font-size: 1rem; color: white; background: #4CAF50;
+            border: none; border-radius: 8px; cursor: pointer; font-weight: bold; margin: 5px;
         }}
         .btn:hover {{ background: #45a049; }}
         .btn-blue {{ background: #2196F3; }}
-        .btn-red {{ background: #f44336; font-size: 0.9rem; padding: 5px 10px; opacity: 0.8; }}
+        .btn-blue:hover {{ background: #0b7dda; }}
+        .btn-red {{ background: #f44336; opacity: 0.8; }}
         .btn-red:hover {{ background: #d32f2f; opacity: 1; }}
+        .btn-purple {{ background: #9C27B0; }}
+        .btn-purple:hover {{ background: #7B1FA2; }}
         
-        #controls {{ display: flex; flex-wrap: wrap; justify-content: center; margin-top: 5px; }}
+        #controls {{ display: flex; flex-wrap: wrap; justify-content: center; margin-top: 5px; gap: 5px; }}
     </style>
     </head>
     <body>
@@ -258,12 +283,21 @@ if st.session_state.typing_words:
                 <div id="controls">
                     <button class="btn" onclick="restart()">もういちど あそぶ</button>
                     <button class="btn btn-red" onclick="resetRanking()">ランキングをリセット</button>
+                    <button class="btn btn-purple" onclick="downloadSaveFile()">💾 ほぞん</button>
                 </div>
             </div>
         </div>
     <script>
         const words = {words_json};
-        const storageKey = "typing_ranking_" + words.length;
+        const problemId = "{problem_id}";
+        const storageKey = "typing_ranking_" + problemId; // 問題ごとに固有の保存先を使用
+        const loadedRanking = {loaded_ranking_json};
+        
+        // ファイルから読み込んだランキングデータがあり、かつブラウザにまだデータが無い場合は適用する
+        if (!localStorage.getItem(storageKey) && loadedRanking.length > 0) {{
+            localStorage.setItem(storageKey, JSON.stringify(loadedRanking));
+        }}
+
         let idx = 0, typed = "";
         let startTime = null, timerInterval = null, finalTimeStr = "";
 
@@ -382,7 +416,7 @@ if st.session_state.typing_words:
             let rankings = JSON.parse(localStorage.getItem(storageKey) || "[]");
             rankings.push({{ name: nameInput, time: parseFloat(finalTimeStr) }});
             rankings.sort((a, b) => a.time - b.time);
-            rankings = rankings.slice(0, 5);
+            rankings = rankings.slice(0, 5); // 上位5件を保存
             
             localStorage.setItem(storageKey, JSON.stringify(rankings));
             entryArea.style.display = "none";
@@ -390,10 +424,28 @@ if st.session_state.typing_words:
         }}
 
         function resetRanking() {{
-            if (confirm("この問題数のランキングをすべて消去しますか？")) {{
+            if (confirm("この問題のランキングをすべて消去しますか？")) {{
                 localStorage.removeItem(storageKey);
                 loadRankingTable();
             }}
+        }}
+        
+        // 💡 新しい保存機能（問題データとランキングを一つにしてダウンロード）
+        function downloadSaveFile() {{
+            const currentRanking = JSON.parse(localStorage.getItem(storageKey) || "[]");
+            const saveData = {{
+                problem_id: problemId,
+                words: words,
+                ranking: currentRanking
+            }};
+            
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(saveData, null, 2));
+            const dlAnchorElem = document.createElement('a');
+            dlAnchorElem.setAttribute("href", dataStr);
+            dlAnchorElem.setAttribute("download", "typing_save_" + words.length + "words.json");
+            document.body.appendChild(dlAnchorElem);
+            dlAnchorElem.click();
+            dlAnchorElem.remove();
         }}
 
         function createConfetti() {{
