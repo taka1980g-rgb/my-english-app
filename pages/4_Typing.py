@@ -165,7 +165,7 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=not bool
                 st.error("単語をいれてね！")
 
     # ------------------------------------
-    # 💡 タブ3: 読み込み（完全に独立したステップに改修）
+    # タブ3: 読み込み（完全に独立したステップに改修）
     # ------------------------------------
     with tab3:
         st.markdown("#### 📂 ほぞんしたファイルから よみこむ")
@@ -173,7 +173,6 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=not bool
         
         if uploaded_file is not None:
             try:
-                # ファイルの中身を読み込む（複数回画面が更新されても安全な方法）
                 file_bytes = uploaded_file.getvalue()
                 save_data = json.loads(file_bytes.decode("utf-8"))
                 
@@ -189,7 +188,6 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=not bool
                 st.success("✅ ファイルを読み込みました！下の表で確認・編集してね。")
                 st.write("💡 **表の文字をクリックすると直接書き換えられます。**（行の追加・削除も可能）")
                 
-                # 💡 データエディタ（表計算のような直感的なUI）
                 edited_words = st.data_editor(
                     words,
                     column_order=("en", "ja"),
@@ -207,7 +205,7 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=not bool
                     for item in edited_words:
                         en = str(item.get("en", "")).strip().lower()
                         ja = str(item.get("ja", "")).strip()
-                        if en and en != "nan": # 無効な入力を弾く
+                        if en and en != "nan": 
                             valid_words.append({"en": en, "ja": ja if ja and ja != "nan" else "(意味なし)"})
                     
                     if valid_words:
@@ -253,15 +251,15 @@ if st.session_state.typing_words:
             background: rgba(255, 255, 255, 0.98); display: none;
             flex-direction: column; align-items: center; justify-content: center; z-index: 10;
         }}
-        #ranking-modal h2 {{ color: #ff9800; margin: 0 0 10px 0; font-size: 2.5rem; }}
-        .ranking-table {{ border-collapse: collapse; width: 80%; max-width: 500px; font-size: 1.2rem; margin-bottom: 10px; background: white; }}
-        .ranking-table th, .ranking-table td {{ border: 2px solid #87CEFA; padding: 6px; text-align: center; }}
+        #ranking-modal h2 {{ color: #ff9800; margin: 0 0 10px 0; font-size: 2.2rem; }}
+        .ranking-table {{ border-collapse: collapse; width: 80%; max-width: 400px; font-size: 1.1rem; margin-bottom: 10px; background: white; }}
+        .ranking-table th, .ranking-table td {{ border: 2px solid #87CEFA; padding: 4px 6px; text-align: center; }}
         .ranking-table th {{ background: #87CEFA; color: white; }}
         .ranking-table tr:nth-child(even) {{ background-color: #f2f2f2; }}
-        .top1 {{ font-weight: bold; color: #d4af37; font-size: 1.4rem; }}
+        .top1 {{ font-weight: bold; color: #d4af37; font-size: 1.3rem; }}
         
-        #entry-area {{ margin-bottom: 15px; font-size: 1.2rem; text-align: center; }}
-        #player-name {{ font-size: 1.2rem; padding: 8px; width: 180px; text-align: center; border: 2px solid #87CEFA; border-radius: 5px; outline: none; }}
+        #entry-area {{ margin-bottom: 10px; font-size: 1.2rem; text-align: center; }}
+        #player-name {{ font-size: 1.2rem; padding: 6px; width: 150px; text-align: center; border: 2px solid #87CEFA; border-radius: 5px; outline: none; }}
         .btn {{
             padding: 8px 15px; font-size: 1rem; color: white; background: #4CAF50;
             border: none; border-radius: 8px; cursor: pointer; font-weight: bold; margin: 5px;
@@ -308,9 +306,12 @@ if st.session_state.typing_words:
         const words = {words_json};
         const problemId = "{problem_id}";
         const storageKey = "typing_ranking_" + problemId; 
-        const loadedRanking = {loaded_ranking_json};
+        let loadedRanking = {loaded_ranking_json};
         
+        // 読み込んだファイルのランキングを上位5件に絞ってからストレージに保存
         if (!localStorage.getItem(storageKey) && loadedRanking.length > 0) {{
+            loadedRanking.sort((a, b) => a.time - b.time);
+            loadedRanking = loadedRanking.slice(0, 5);
             localStorage.setItem(storageKey, JSON.stringify(loadedRanking));
         }}
 
@@ -411,6 +412,9 @@ if st.session_state.typing_words:
 
         function loadRankingTable() {{
             let rankings = JSON.parse(localStorage.getItem(storageKey) || "[]");
+            // 💡 念のため表示時にも上位5件でカット！これで絶対に溢れない
+            rankings = rankings.slice(0, 5); 
+            
             rankingBody.innerHTML = "";
             if (rankings.length === 0) {{
                 rankingBody.innerHTML = "<tr><td colspan='3'>まだデータがありません</td></tr>";
@@ -431,6 +435,7 @@ if st.session_state.typing_words:
             let rankings = JSON.parse(localStorage.getItem(storageKey) || "[]");
             rankings.push({{ name: nameInput, time: parseFloat(finalTimeStr) }});
             rankings.sort((a, b) => a.time - b.time);
+            // 💡 常に上位5件だけを保存する
             rankings = rankings.slice(0, 5); 
             
             localStorage.setItem(storageKey, JSON.stringify(rankings));
@@ -446,7 +451,8 @@ if st.session_state.typing_words:
         }}
         
         function downloadSaveFile() {{
-            const currentRanking = JSON.parse(localStorage.getItem(storageKey) || "[]");
+            let currentRanking = JSON.parse(localStorage.getItem(storageKey) || "[]");
+            currentRanking = currentRanking.slice(0, 5); // 💡 保存時にも5件でカット
             const saveData = {{
                 problem_id: problemId,
                 words: words,
@@ -456,7 +462,6 @@ if st.session_state.typing_words:
             const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(saveData, null, 2));
             const dlAnchorElem = document.createElement('a');
             dlAnchorElem.setAttribute("href", dataStr);
-            // ダウンロード時のファイル名（問題の最初の単語を入れると分かりやすい）
             const firstWord = words[0].en || "typing";
             dlAnchorElem.setAttribute("download", firstWord + "_" + words.length + "words.json");
             document.body.appendChild(dlAnchorElem);
