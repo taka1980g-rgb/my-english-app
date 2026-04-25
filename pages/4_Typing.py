@@ -49,7 +49,6 @@ if "custom_word_count" not in st.session_state:
 if "edit_words" not in st.session_state:
     st.session_state.edit_words = [{"en": "", "ja": ""} for _ in range(5)]
 
-# 問題ごとの固有ID（ランキングの紐付けに使用）
 if "current_problem_id" not in st.session_state:
     st.session_state.current_problem_id = str(uuid.uuid4())
 if "loaded_ranking" not in st.session_state:
@@ -165,7 +164,7 @@ with st.expander("📝 もんだいを つくる / えらぶ", expanded=not bool
                 st.error("単語をいれてね！")
 
     # ------------------------------------
-    # タブ3: 読み込み（完全に独立したステップに改修）
+    # タブ3: 読み込み
     # ------------------------------------
     with tab3:
         st.markdown("#### 📂 ほぞんしたファイルから よみこむ")
@@ -237,7 +236,7 @@ if st.session_state.typing_words:
         body {{ font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; background: #fff; overflow: hidden; }}
         #prog-bg {{ width: 90%; background: #eee; height: 12px; border-radius: 6px; margin: 10px 0; overflow: hidden; }}
         #prog-bar {{ height: 100%; width: 0%; background: #4CAF50; transition: 0.3s; }}
-        #game {{ width: 95%; max-width: 1000px; height: 380px; background: #fcfcfc; border: 4px solid #87CEFA; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; overflow: hidden; }}
+        #game {{ width: 95%; max-width: 1000px; height: 450px; background: #fcfcfc; border: 4px solid #87CEFA; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; overflow: hidden; }}
         #en {{ font-size: 7rem; font-weight: bold; color: #333; margin: 0; letter-spacing: 4px; line-height: 1.2; transition: opacity 0.3s; }}
         #ja {{ font-size: 2.5rem; color: #666; margin-top: 5px; font-weight: bold; transition: opacity 0.3s; }}
         #msg {{ font-size: 2rem; color: #FF69B4; font-weight: bold; height: 40px; transition: opacity 0.3s; }}
@@ -249,10 +248,11 @@ if st.session_state.typing_words:
         #ranking-modal {{
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(255, 255, 255, 0.98); display: none;
-            flex-direction: column; align-items: center; justify-content: center; z-index: 10;
+            flex-direction: column; align-items: center; justify-content: flex-start; z-index: 10;
+            overflow-y: auto; padding: 20px 0;
         }}
         #ranking-modal h2 {{ color: #ff9800; margin: 0 0 10px 0; font-size: 2.2rem; }}
-        .ranking-table {{ border-collapse: collapse; width: 80%; max-width: 400px; font-size: 1.1rem; margin-bottom: 10px; background: white; }}
+        .ranking-table {{ border-collapse: collapse; width: 80%; max-width: 400px; font-size: 1.1rem; margin-bottom: 20px; background: white; }}
         .ranking-table th, .ranking-table td {{ border: 2px solid #87CEFA; padding: 4px 6px; text-align: center; }}
         .ranking-table th {{ background: #87CEFA; color: white; }}
         .ranking-table tr:nth-child(even) {{ background-color: #f2f2f2; }}
@@ -272,7 +272,7 @@ if st.session_state.typing_words:
         .btn-purple {{ background: #9C27B0; }}
         .btn-purple:hover {{ background: #7B1FA2; }}
         
-        #controls {{ display: flex; flex-wrap: wrap; justify-content: center; margin-top: 5px; gap: 5px; }}
+        #controls {{ display: flex; flex-wrap: wrap; justify-content: center; margin-bottom: 15px; gap: 5px; }}
     </style>
     </head>
     <body>
@@ -291,15 +291,17 @@ if st.session_state.typing_words:
                     なまえ：<input type="text" id="player-name" placeholder="ここに名前をいれてね">
                     <button class="btn btn-blue" onclick="saveScore()">とうろく</button>
                 </div>
+                
+                <div id="controls">
+                    <button class="btn" onclick="restart()">もういちど あそぶ</button>
+                    <button class="btn btn-purple" onclick="downloadSaveFile()">💾 ほぞん</button>
+                    <button class="btn btn-red" onclick="resetRanking()">ランキングをリセット</button>
+                </div>
+
                 <table class="ranking-table" id="ranking-table">
                     <thead><tr><th>順位</th><th>なまえ</th><th>タイム</th></tr></thead>
                     <tbody id="ranking-body"></tbody>
                 </table>
-                <div id="controls">
-                    <button class="btn" onclick="restart()">もういちど あそぶ</button>
-                    <button class="btn btn-red" onclick="resetRanking()">ランキングをリセット</button>
-                    <button class="btn btn-purple" onclick="downloadSaveFile()">💾 ほぞん</button>
-                </div>
             </div>
         </div>
     <script>
@@ -308,7 +310,6 @@ if st.session_state.typing_words:
         const storageKey = "typing_ranking_" + problemId; 
         let loadedRanking = {loaded_ranking_json};
         
-        // 読み込んだファイルのランキングを上位5件に絞ってからストレージに保存
         if (!localStorage.getItem(storageKey) && loadedRanking.length > 0) {{
             loadedRanking.sort((a, b) => a.time - b.time);
             loadedRanking = loadedRanking.slice(0, 5);
@@ -412,7 +413,6 @@ if st.session_state.typing_words:
 
         function loadRankingTable() {{
             let rankings = JSON.parse(localStorage.getItem(storageKey) || "[]");
-            // 💡 念のため表示時にも上位5件でカット！これで絶対に溢れない
             rankings = rankings.slice(0, 5); 
             
             rankingBody.innerHTML = "";
@@ -435,7 +435,6 @@ if st.session_state.typing_words:
             let rankings = JSON.parse(localStorage.getItem(storageKey) || "[]");
             rankings.push({{ name: nameInput, time: parseFloat(finalTimeStr) }});
             rankings.sort((a, b) => a.time - b.time);
-            // 💡 常に上位5件だけを保存する
             rankings = rankings.slice(0, 5); 
             
             localStorage.setItem(storageKey, JSON.stringify(rankings));
@@ -452,7 +451,7 @@ if st.session_state.typing_words:
         
         function downloadSaveFile() {{
             let currentRanking = JSON.parse(localStorage.getItem(storageKey) || "[]");
-            currentRanking = currentRanking.slice(0, 5); // 💡 保存時にも5件でカット
+            currentRanking = currentRanking.slice(0, 5);
             const saveData = {{
                 problem_id: problemId,
                 words: words,
@@ -491,7 +490,7 @@ if st.session_state.typing_words:
     </body>
     </html>
     """
-    components.html(html_code, height=500)
+    components.html(html_code, height=550)
     
     if st.button("↩️ もんだいを作りなおす"):
         st.session_state.typing_words = []
